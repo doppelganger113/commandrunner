@@ -24,10 +24,11 @@ jobs:
           cache: maven
       - name: Build with Maven
         run: mvn --batch-mode --update-snapshots verify
-    required-checks:
-      needs: [ lint, test, cucumber ]
-      if: always()
-      runs-on: ubuntu-latest
-      steps:
-        - uses: actions/checkout@v4
-        - run: echo '${{ toJSON(needs) }}' | jq -e 'to_entries | all(.value.result == "success")'
+
+  required-checks:
+    needs: [ test ]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: echo '${{ toJSON(needs) }}' | jq -e 'to_entries | all(.value.result == "success")'
