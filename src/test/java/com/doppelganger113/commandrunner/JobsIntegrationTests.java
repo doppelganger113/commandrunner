@@ -27,7 +27,7 @@ import static org.hamcrest.Matchers.*;
 class JobsIntegrationTests {
 
     static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>(
-            "postgres:17"
+            "postgres:16"
     ).withReuse(true);
 
     @LocalServerPort
