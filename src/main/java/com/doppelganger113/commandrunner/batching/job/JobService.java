@@ -1,17 +1,16 @@
 package com.doppelganger113.commandrunner.batching.job;
 
 import com.doppelganger113.commandrunner.batching.job.dto.JobExecutionOptions;
+import com.doppelganger113.commandrunner.batching.job.dto.JobExecutionResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
-import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 
 @Service
-@EnableAsync
 public class JobService {
 
     private final Logger log = LoggerFactory.getLogger(JobService.class);
@@ -34,7 +33,7 @@ public class JobService {
         return jobExecutor.getAvailableJobs();
     }
 
-    public Job executeJob(JobExecutionOptions jobExecutionOptions) {
+    public JobExecutionResponse executeJob(JobExecutionOptions jobExecutionOptions) {
         if (!jobExecutor.hasExecutor(jobExecutionOptions.name())) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
@@ -49,6 +48,6 @@ public class JobService {
             jobExecutor.execute(result.job());
         }
 
-        return result.job();
+        return JobExecutionResponse.from(result);
     }
 }

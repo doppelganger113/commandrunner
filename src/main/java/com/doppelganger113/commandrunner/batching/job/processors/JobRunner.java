@@ -17,12 +17,12 @@ public class JobRunner implements JobProcessor {
 
     @Override
     public void execute(HashMap<String, Object> arguments) {
-        log.info("Executing job runner {}", arguments);
-        try {
-            Thread.sleep(Duration.ofSeconds(5));
-            log.info("Executed job runner");
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        }
+        log.debug("Executing job runner {}", arguments);
+//        try {
+////            Thread.sleep(Duration.ofSeconds(5));
+//            log.info("Executed job runner");
+//        } catch (InterruptedException e) {
+//            throw new RuntimeException(e);
+//        }
     }
 }

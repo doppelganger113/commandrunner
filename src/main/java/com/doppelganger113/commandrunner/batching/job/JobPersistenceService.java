@@ -31,7 +31,7 @@ public class JobPersistenceService {
     public record JobCreationResult(Job job, boolean wasCreated) {
     }
 
-    @Transactional
+    @Transactional(timeout = 3)
     public JobCreationResult createNewJobOrGetExisting(JobExecutionOptions jobExecutionOptions) {
         Job newJob = new Job();
         newJob.setName(jobExecutionOptions.name());
@@ -52,13 +52,13 @@ public class JobPersistenceService {
     /**
      * Was job actually marked as started as there can be cases where it was stopped before running.
      */
-    @Transactional
+    @Transactional(timeout = 3)
     public boolean setJobToRunning(Long jobId) {
         Job job = jobRepository.findById(jobId).orElseThrow(() -> new RuntimeException("Job not found"));
         if (Objects.equals(job.getState(), JobState.RUNNING)) {
             throw new RuntimeException("Job is already running " + job.getId());
         }
-        log.info("setJobToRunning - {}", job);
+        log.debug("setJobToRunning - {}", job);
         if (job.getState().equals(JobState.STOPPING)) {
             jobRepository.setJobStopped(jobId);
             return false;
@@ -68,39 +68,37 @@ public class JobPersistenceService {
         return true;
     }
 
-    @Transactional
+    @Transactional(timeout = 3)
     public void setJobToStopped(Long jobId) {
         jobRepository.setJobStopped(jobId);
     }
 
-    @Transactional
+    @Transactional(timeout = 3)
     public void setJobToCompletedOrStopped(Job job) {
-        setJobToCompletedOrStopped(job.getId());
-        if (!Objects.equals(job.getState(), JobState.RUNNING)) {
-            throw new RuntimeException("Job " + job.getId() + " is not in running state but " + job.getState());
-        }
         if (job.getState().equals(JobState.STOPPING)) {
             jobRepository.setJobStopped(job.getId());
             return;
         }
+        if (!Objects.equals(job.getState(), JobState.RUNNING)) {
+            throw new RuntimeException("Job " + job.getId() + " is not in running state but " + job.getState());
+        }
         jobRepository.setJobCompleted(job.getId());
     }
 
-    @Transactional
+    @Transactional(timeout = 3)
     public void setJobToCompletedOrStopped(Long jobId) {
         Job job = jobRepository.findById(jobId).orElseThrow(() -> new RuntimeException("Job not found"));
         setJobToCompletedOrStopped(job);
     }
 
-    @Transactional
+    @Transactional(timeout = 3)
     public void setJobToFailed(Long jobId, Throwable throwable) {
         Job job = jobRepository.findById(jobId).orElseThrow(() -> new RuntimeException("Job not found"));
-        boolean isCompleted = Objects.equals(job.getState(), JobState.RUNNING);
         boolean isStopped = Objects.equals(job.getState(), JobState.STOPPED);
-        if (isCompleted || isStopped) {
+        if (isStopped) {
             throw new RuntimeException("Job " + job.getId() + " is not in state to be stopped: " + job.getState());
         }
-        String error = throwable.getLocalizedMessage() + Arrays.toString(throwable.getStackTrace());
+        String error = throwable.getLocalizedMessage() + " " +Arrays.toString(throwable.getStackTrace());
         jobRepository.setJobFailed(jobId, error);
     }
 }
