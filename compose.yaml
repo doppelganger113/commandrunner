@@ -8,25 +8,25 @@ services:
     ports:
       - '5432:5432'
 
-  sftp:
-    image: atmoz/sftp
-    ports:
-      - "2222:22"
-    command: foo:pass:::upload
-
-  app:
-    image: commandrunner:0.0.1
-    pull_policy: never
-    deploy:
-      resources:
-        limits:
-          cpus: '2'
-          memory: 1024M
-    ports:
-      - "8080:8080"
-    depends_on:
-      - postgres
-    environment:
-      SPRING_DATASOURCE_URL: "jdbc:postgresql://postgres:5432/mydatabase"
-      SPRING_DATASOURCE_USERNAME: "myuser"
-      SPRING_DATASOURCE_PASSWORD: "secret"
+#  sftp:
+#    image: atmoz/sftp
+#    ports:
+#      - "2222:22"
+#    command: foo:pass:::upload
+#
+#  app:
+#    image: commandrunner:0.0.1
+#    pull_policy: never
+#    deploy:
+#      resources:
+#        limits:
+#          cpus: '2'
+#          memory: 1024M
+#    ports:
+#      - "8080:8080"
+#    depends_on:
+#      - postgres
+#    environment:
+#      SPRING_DATASOURCE_URL: "jdbc:postgresql://postgres:5432/mydatabase"
+#      SPRING_DATASOURCE_USERNAME: "myuser"
+#      SPRING_DATASOURCE_PASSWORD: "secret"

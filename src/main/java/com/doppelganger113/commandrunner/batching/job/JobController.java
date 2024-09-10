@@ -1,6 +1,7 @@
 package com.doppelganger113.commandrunner.batching.job;
 
 import com.doppelganger113.commandrunner.batching.job.dto.JobExecutionOptions;
+import com.doppelganger113.commandrunner.batching.job.dto.JobExecutionResponse;
 import com.doppelganger113.commandrunner.batching.job.dto.JobUpdate;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
@@ -36,6 +37,7 @@ public class JobController {
     }
 
     @PatchMapping("/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
     public void updateJob(@PathVariable long id, @RequestBody JobUpdate jobUpdate) {
         if (jobUpdate.stop()) {
             jobRepository.setJobToStop(id);
@@ -43,28 +45,7 @@ public class JobController {
     }
 
     @PostMapping
-    public Job execute(@RequestBody JobExecutionOptions jobExecutionOptions) {
-        // WHOLE discussion is on: should we return an existing job or only if there is a new one created?
-        //      This is in cases this is used through an API where we create a job with bunch of tasks
-
-        // [IF] we want to rerun the same job with same arguments again, we just add a new argument that's a date
-        // and because date is changed for every request it will get executed every request as a new job
-        // but of course waiting for the previous of the same name to finish
-
-        // Are there cases when we want a job with the same name (diff args) to run in parallel?
-
-        // 1. job with the same name and arguments was already executed, we do nothing
-        // 2. job with the same name and DIFFERENT arguments was executed, we create a new job
-
-        // 3. job with the same name and arguments is already running
-        // 4. job with the same name and DIFFERENT arguments is already running
-
-        // 5. job with the same name and same arguments is finished
-
-        // We return the response with:
-        // CASE: "RUNNING"
-        // CASE: "STOPPING"
-        // CASE: "COMPLETED"
+    public JobExecutionResponse execute(@RequestBody JobExecutionOptions jobExecutionOptions) {
         return jobService.executeJob(jobExecutionOptions);
     }
 }

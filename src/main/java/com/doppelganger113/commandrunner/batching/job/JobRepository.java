@@ -40,6 +40,9 @@ public interface JobRepository extends ListCrudRepository<Job, Long> {
     void setJobCompleted(Long id);
 
     @Modifying
-    @Query(value = "UPDATE jobs SET state = 'FAILED', error = ?2 WHERE id = ?1", nativeQuery = true)
+    @Query(
+            value = "UPDATE jobs SET state = 'FAILED', completed_at = NOW(), duration_ms = EXTRACT(MILLISECONDS FROM (NOW() - started_at)), error = ?2 WHERE id = ?1",
+            nativeQuery = true
+    )
     void setJobFailed(Long id, String error);
 }
