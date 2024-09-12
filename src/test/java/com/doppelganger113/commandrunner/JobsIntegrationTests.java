@@ -61,13 +61,13 @@ class JobsIntegrationTests {
                 .throwable(new RuntimeException("Failed again"))
                 .build();
         public static CustomJobProcessor SLOW = getBuilder()
-                .durationMs(50)
+                .durationMs(200)
                 .name("slow_processor")
                 .build();
 
         public static CustomJobProcessor SLOW_THROWABLE = CustomJobProcessor.getBuilder()
                 .name("slow_failing")
-                .durationMs(50)
+                .durationMs(200)
                 .throwable(new RuntimeException("failed later"))
                 .build();
 
