@@ -5,6 +5,7 @@ import com.doppelganger113.commandrunner.batching.job.processors.JobProcessor;
 import com.doppelganger113.commandrunner.batching.job.processors.JobRunner;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.lang.NonNull;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.stereotype.Service;
@@ -43,6 +44,14 @@ public class JobExecutor {
         map.putIfAbsent(jobProcessor.getName(), jobProcessor);
     }
 
+    public void removeJobProcessor(JobProcessor jobProcessor) {
+        map.remove(jobProcessor.getName());
+    }
+
+    public void replaceJobProcessor(JobProcessor jobProcessor) {
+        map.replace(jobProcessor.getName(), jobProcessor);
+    }
+
     public Optional<JobProcessor> getJobRunnerByName(String name) {
         return Optional.ofNullable(map.get(name));
     }
@@ -61,26 +70,38 @@ public class JobExecutor {
     }
 
     @Async
-    public void execute(Job job) {
-        Objects.requireNonNull(job.getId());
+    public void execute(@NonNull Job job) {
+        Objects.requireNonNull(job);
+        var args = job.getArguments();
+        var jobId = job.getId();
+        Objects.requireNonNull(jobId);
+
         JobProcessor jobRunner = getJobRunnerByName(job.getName())
                 .orElseThrow(() -> new RuntimeException("No job runner found with name " + job.getName()));
 
-        log.debug("job runner execution {}", job.getId());
+        log.debug("job runner execution {}", jobId);
+
         try {
-            boolean wasStarted = jobPersistenceService.setJobToRunning(job.getId());
+
+            jobRunner.before(args);
+
+            boolean wasStarted = jobPersistenceService.setJobToRunning(jobId);
             if (!wasStarted) {
-                log.debug("job runner skipped due to being stopped");
-                jobPersistenceService.setJobToStopped(job.getId());
+                log.debug("job runner skipped due to being stopped: {}", jobId);
+                jobPersistenceService.setJobToStopped(jobId);
                 return;
             }
-            log.debug("job runner started");
-            jobRunner.execute(job.getArguments());
-            jobPersistenceService.setJobToCompletedOrStopped(job.getId());
-            log.debug("job runner finished");
+            log.debug("job runner started: {}", jobId);
+
+            jobRunner.execute(args);
+
+            jobPersistenceService.setJobToCompletedOrStopped(jobId);
+            log.debug("job runner finished: {}", jobId);
         } catch (RuntimeException e) {
-            log.error("job runner failed", e);
-            jobPersistenceService.setJobToFailed(job.getId(), e);
+            log.error("job runner failed: {}", jobId, e);
+            jobPersistenceService.setJobToFailed(jobId, e);
+        } finally {
+            jobRunner.after(args);
         }
     }
 }
