@@ -18,6 +18,8 @@ import org.testcontainers.containers.PostgreSQLContainer;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.LinkedBlockingDeque;
+import java.util.concurrent.TimeUnit;
 
 import static io.restassured.RestAssured.given;
 import static org.hamcrest.Matchers.*;
@@ -47,7 +49,8 @@ class JobsIntegrationTests {
     private record CustomJobProcessor(
             String name,
             Integer durationMs,
-            Throwable throwable
+            Throwable throwable,
+            LinkedBlockingDeque<Boolean> blockingDeque
     ) implements JobProcessor {
 
         public static CustomJobProcessor DEFAULT = getBuilder()
@@ -58,8 +61,14 @@ class JobsIntegrationTests {
                 .throwable(new RuntimeException("Failed again"))
                 .build();
         public static CustomJobProcessor SLOW = getBuilder()
-                .durationMs(500)
+                .durationMs(50)
                 .name("slow_processor")
+                .build();
+
+        public static CustomJobProcessor SLOW_THROWABLE = CustomJobProcessor.getBuilder()
+                .name("slow_failing")
+                .durationMs(50)
+                .throwable(new RuntimeException("failed later"))
                 .build();
 
         @Override
@@ -78,6 +87,29 @@ class JobsIntegrationTests {
             }
             if (throwable != null) {
                 throw new RuntimeException(throwable);
+            }
+        }
+
+        @Override
+        public void after(HashMap<String, Object> arguments) {
+            if (blockingDeque != null) {
+                blockingDeque.add(true);
+            }
+        }
+
+        public void waitForCompletionOrFail() {
+            try {
+                var result = blockingDeque.pollFirst(1, TimeUnit.SECONDS);
+                if (result == null) {
+                    throw new RuntimeException("Timed out pooling from dequeue");
+                }
+                if(!blockingDeque.isEmpty()) {
+                    throw new RuntimeException(
+                            "Size is bigger, did you expect multiple executions of the same job?"
+                    );
+                }
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
             }
         }
 
@@ -102,7 +134,7 @@ class JobsIntegrationTests {
             }
 
             public CustomJobProcessor build() {
-                return new CustomJobProcessor(name, durationMs, throwable);
+                return new CustomJobProcessor(name, durationMs, throwable, new LinkedBlockingDeque<>());
             }
         }
 
@@ -132,12 +164,20 @@ class JobsIntegrationTests {
     void beforeEach() {
         RestAssured.baseURI = "http://localhost:" + port;
         jobRepository.deleteAll();
+
+        // Drain queues
+        CustomJobProcessor.DEFAULT.blockingDeque.clear();
+        CustomJobProcessor.SLOW.blockingDeque.clear();
+        CustomJobProcessor.THROWABLE.blockingDeque.clear();
+        CustomJobProcessor.SLOW_THROWABLE.blockingDeque.clear();
     }
 
     @Test
-    void givenNewJobCreation_whenThereAreNotAny_thenReturnListOfOneNewJob() throws InterruptedException {
+    void givenNewJobCreation_whenThereAreNotAny_thenReturnListOfOneNewJob() {
+        jobExecutor.addJobProcessor(CustomJobProcessor.DEFAULT);
+
         given()
-                .body(new JobExecutionOptions("my_job", DEFAULT_HASH_MAP))
+                .body(new JobExecutionOptions(CustomJobProcessor.DEFAULT.name(), DEFAULT_HASH_MAP))
                 .contentType(ContentType.JSON)
                 .when()
                 .post("/jobs")
@@ -151,8 +191,7 @@ class JobsIntegrationTests {
                         "job.arguments.age", equalTo(32)
                 );
 
-
-        Thread.sleep(100);
+        CustomJobProcessor.DEFAULT.waitForCompletionOrFail();
 
         given()
                 .contentType(ContentType.JSON)
@@ -172,9 +211,9 @@ class JobsIntegrationTests {
     }
 
     @Test
-    void givenNewJobCreation_whenThereAreNotAny_thenReturnNewJob() throws InterruptedException {
+    void givenNewJobCreation_whenThereAreNotAny_thenReturnNewJob() {
         Integer jobId = given()
-                .body(new JobExecutionOptions("my_job", DEFAULT_HASH_MAP))
+                .body(new JobExecutionOptions(CustomJobProcessor.DEFAULT.name(), DEFAULT_HASH_MAP))
                 .contentType(ContentType.JSON)
                 .when()
                 .post("/jobs")
@@ -190,7 +229,7 @@ class JobsIntegrationTests {
                 .extract().path("job.id");
 
 
-        Thread.sleep(100);
+        CustomJobProcessor.DEFAULT.waitForCompletionOrFail();
 
         given()
                 .contentType(ContentType.JSON)
@@ -220,7 +259,7 @@ class JobsIntegrationTests {
     }
 
     @Test
-    void givenNewJobCreation_whenIdenticalJobWasCreatedAndRunning_thenReturnPreviousJob() throws InterruptedException {
+    void givenNewJobCreation_whenIdenticalJobWasCreatedAndRunning_thenReturnPreviousJob() {
         jobExecutor.addJobProcessor(CustomJobProcessor.SLOW);
 
         Integer jobId = given()
@@ -254,7 +293,7 @@ class JobsIntegrationTests {
                         "job.arguments.age", equalTo(32)
                 );
 
-        Thread.sleep(1_000);
+        CustomJobProcessor.SLOW.waitForCompletionOrFail();
 
         given()
                 .contentType(ContentType.JSON)
@@ -275,14 +314,56 @@ class JobsIntegrationTests {
     }
 
     @Test
-    void givenNewJobCreation_whenIdenticalJobWasCreatedAndCompleted_thenReturnPreviousJob() throws InterruptedException {
+    void givenNewJobCreation_whenJobWithSameNameButDiffArgsIsRunning_thenReturnStatus() {
         jobExecutor.addJobProcessor(CustomJobProcessor.SLOW);
+
+        // Create the
+        Integer jobId = given()
+                .body(new JobExecutionOptions(CustomJobProcessor.SLOW.name(), null))
+                .contentType(ContentType.JSON)
+                .when()
+                .post("/jobs")
+                .then()
+                .statusCode(200)
+                .body(
+                        "description", equalTo("CREATED"),
+                        "job.name", equalTo(CustomJobProcessor.SLOW.name()),
+                        "job.id", not(notANumber()),
+                        "job.arguments", equalTo(null),
+                        "job.argumentsHash", equalTo(""),
+                        "job.state", equalTo("READY")
+                )
+                .extract().path("job.id");
+
+        Integer jobId2 = given()
+                .body(new JobExecutionOptions(CustomJobProcessor.SLOW.name(), DEFAULT_HASH_MAP))
+                .contentType(ContentType.JSON)
+                .when()
+                .post("/jobs")
+                .then()
+                .statusCode(200)
+                .body(
+                        "description", equalTo("RUNNING"),
+                        "job.name", equalTo(CustomJobProcessor.SLOW.name()),
+                        "job.id", not(notANumber()),
+                        "job.arguments", equalTo(null),
+                        "job.argumentsHash", equalTo(""),
+                        "job.state", equalTo("RUNNING")
+                )
+                .extract().path("job.id");
+
+        Assertions.assertEquals(jobId, jobId2);
+    }
+
+    @Test
+    void givenNewJobCreation_whenIdenticalJobWasCreatedAndCompleted_thenReturnPreviousJob() {
+        jobExecutor.addJobProcessor(CustomJobProcessor.DEFAULT);
 
         HashMap<String, Object> params = new HashMap<>();
         params.put("age", 32);
 
         Integer jobId = given()
-                .body(new JobExecutionOptions(CustomJobProcessor.SLOW.name(), params))
+                .body(new JobExecutionOptions(CustomJobProcessor.DEFAULT.name(), params))
                 .contentType(ContentType.JSON)
                 .when()
                 .post("/jobs")
@@ -297,10 +378,10 @@ class JobsIntegrationTests {
                 )
                 .extract().path("job.id");
 
-        Thread.sleep(1_000);
+        CustomJobProcessor.DEFAULT.waitForCompletionOrFail();
 
         given()
-                .body(new JobExecutionOptions(CustomJobProcessor.SLOW.name(), params))
+                .body(new JobExecutionOptions(CustomJobProcessor.DEFAULT.name(), params))
                 .contentType(ContentType.JSON)
                 .when()
                 .post("/jobs")
@@ -333,7 +414,7 @@ class JobsIntegrationTests {
     }
 
     @Test
-    void  givenStoppingJob_whenThatJobIsRunning_thenReturnStoppingStateAndStoppedState() throws InterruptedException {
+    void givenStoppingJob_whenThatJobIsRunning_thenReturnStoppingStateAndStoppedState() {
         jobExecutor.addJobProcessor(CustomJobProcessor.SLOW);
 
         // Create a new job
@@ -371,7 +452,7 @@ class JobsIntegrationTests {
                 .statusCode(200)
                 .body("state", equalTo("STOPPING"));
 
-        Thread.sleep(1_000);
+        CustomJobProcessor.SLOW.waitForCompletionOrFail();
 
         // Verify if the job was stopped
         given()
@@ -392,14 +473,8 @@ class JobsIntegrationTests {
     }
 
     @Test
-    void givenNewJob_whenStoppingItWhileRunningButItFails_thenReturnFailedStateWithError() throws InterruptedException {
-        jobExecutor.addJobProcessor(
-                CustomJobProcessor.getBuilder()
-                        .name("slow_failing")
-                        .durationMs(500)
-                        .throwable(new RuntimeException("failed later"))
-                        .build()
-        );
+    void givenNewJob_whenStoppingItWhileRunningButItFails_thenReturnFailedStateWithError() {
+        jobExecutor.addJobProcessor(CustomJobProcessor.SLOW_THROWABLE);
 
         // Create a new job
         Integer jobId = given()
@@ -436,7 +511,7 @@ class JobsIntegrationTests {
                 .statusCode(200)
                 .body("state", equalTo("STOPPING"));
 
-        Thread.sleep(1_000);
+        CustomJobProcessor.SLOW_THROWABLE.waitForCompletionOrFail();
 
         // Verify if the job was failed
         given()
@@ -458,7 +533,7 @@ class JobsIntegrationTests {
     }
 
     @Test
-    void givenNewJob_whenSameJobIsBeingStopped_thenReturnRunningJobWithStateStopping() throws InterruptedException {
+    void givenNewJob_whenSameJobIsBeingStopped_thenReturnRunningJobWithStateStopping() {
         jobExecutor.addJobProcessor(CustomJobProcessor.SLOW);
 
         // Create a new job
@@ -503,7 +578,7 @@ class JobsIntegrationTests {
                         "job.arguments.age", equalTo(32)
                 );
 
-        Thread.sleep(1_000);
+        CustomJobProcessor.SLOW.waitForCompletionOrFail();
 
         // Verify if the job was failed
         given()
@@ -523,9 +598,9 @@ class JobsIntegrationTests {
                         "error", nullValue()
                 );
     }
-    
+
     @Test
-    void givenNewJob_whenSameJobIsStopped_thenReturnStoppedJob() throws InterruptedException {
+    void givenNewJob_whenSameJobIsStopped_thenReturnStoppedJob() {
         jobExecutor.addJobProcessor(CustomJobProcessor.SLOW);
 
         // Create a new job
@@ -554,7 +629,7 @@ class JobsIntegrationTests {
                 .then()
                 .statusCode(204);
 
-        Thread.sleep(1_000);
+        CustomJobProcessor.SLOW.waitForCompletionOrFail();
 
         // Try to create the same job again
         given()
@@ -574,7 +649,7 @@ class JobsIntegrationTests {
     }
 
     @Test
-    void givenCreateNewJob_whenJobRunnerFails_thenReturnFailedJob() throws InterruptedException {
+    void givenCreateNewJob_whenJobRunnerFails_thenReturnFailedJob() {
         jobExecutor.addJobProcessor(CustomJobProcessor.THROWABLE);
 
         // Create a failing job
@@ -594,7 +669,7 @@ class JobsIntegrationTests {
                         "job.state", equalTo("READY")
                 );
 
-        Thread.sleep(100);
+        CustomJobProcessor.THROWABLE.waitForCompletionOrFail();
 
         given()
                 .contentType(ContentType.JSON)
@@ -614,4 +689,6 @@ class JobsIntegrationTests {
                         "[0].error", containsString("Failed again")
                 );
     }
+
+    // TODO: queuing jobs?
 }

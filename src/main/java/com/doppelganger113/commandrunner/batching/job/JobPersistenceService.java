@@ -39,10 +39,19 @@ public class JobPersistenceService {
         newJob.setArgumentsHash(shaHash.hash(jobExecutionOptions.arguments()));
         newJob.setState(JobState.READY);
 
+        // Jobs of same name and same arguments are only executed once
         Optional<Job> existingJob = jobRepository
                 .findFirstByNameAndArgumentsHashOrderByIdDesc(newJob.getName(), newJob.getArgumentsHash());
         if (existingJob.isPresent()) {
             return new JobCreationResult(existingJob.get(), false);
+        }
+
+        // Jobs of same name and different arguments can be executed multiple times, BUT not at the same time!
+        Optional<Job> existingSameNameOngoingJob = jobRepository.findByNameAndStateNotInOrderByCreatedAtDesc(
+                newJob.getName(), JOB_DONE_STATES
+        );
+        if (existingSameNameOngoingJob.isPresent()) {
+            return new JobCreationResult(existingSameNameOngoingJob.get(), false);
         }
 
         Job createdJob = jobRepository.save(newJob);

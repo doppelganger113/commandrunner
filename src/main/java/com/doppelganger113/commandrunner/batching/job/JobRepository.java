@@ -5,9 +5,13 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.ListCrudRepository;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
 import java.util.Optional;
 
 public interface JobRepository extends ListCrudRepository<Job, Long> {
+
+    Optional<Job> findByNameAndStateNotInOrderByCreatedAtDesc(String name, List<JobState> states);
+
     Optional<Job> findFirstByNameAndArgumentsHashOrderByIdDesc(String name, String argumentsHash);
 
     @Transactional
