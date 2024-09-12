@@ -20,7 +20,7 @@ services:
 #    deploy:
 #      resources:
 #        limits:
-#          cpus: '2'
+#          cpus: '1'
 #          memory: 1024M
 #    ports:
 #      - "8080:8080"
@@ -30,3 +30,4 @@ services:
 #      SPRING_DATASOURCE_URL: "jdbc:postgresql://postgres:5432/mydatabase"
 #      SPRING_DATASOURCE_USERNAME: "myuser"
 #      SPRING_DATASOURCE_PASSWORD: "secret"
+#      SPRING_PROFILES_ACTIVE: prod

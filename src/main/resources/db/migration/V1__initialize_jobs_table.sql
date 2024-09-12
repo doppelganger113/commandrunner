@@ -4,8 +4,8 @@ CREATE TABLE IF NOT EXISTS jobs
     name           VARCHAR(250) NOT NULL,
     arguments      JSONB,
     arguments_hash VARCHAR(64),
-    state          VARCHAR(30)  NOT NULL default 'READY',
-    created_at     TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    state          VARCHAR(30) default 'READY',
+    created_at     TIMESTAMPTZ DEFAULT now(),
     updated_at     TIMESTAMPTZ,
     started_at     TIMESTAMPTZ,
     completed_at   TIMESTAMPTZ,
@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS jobs
     retry_limit    INTEGER,
     parent_job_id  INTEGER,
     error          TEXT,
+    CHECK (parent_job_id <> id),
     FOREIGN KEY (parent_job_id) REFERENCES jobs (id)
 );
 

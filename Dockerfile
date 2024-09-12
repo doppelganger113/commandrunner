@@ -26,4 +26,4 @@ RUN addgroup --system appuser \
 
 USER appuser
 
-ENTRYPOINT ["java","-XX:MaxRAMPercentage=70","-jar","application.jar"]
+ENTRYPOINT ["java","-XX:InitialRAMPercentage=70","-XX:MaxRAMPercentage=70","-XX:+UseG1GC","-XX:+UseStringDeduplication","-jar","application.jar"]

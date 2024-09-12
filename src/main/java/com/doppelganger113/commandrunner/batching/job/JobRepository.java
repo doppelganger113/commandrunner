@@ -49,4 +49,21 @@ public interface JobRepository extends ListCrudRepository<Job, Long> {
             nativeQuery = true
     )
     void setJobFailed(Long id, String error);
+
+    // The query needs all fields
+    @Query(
+            value = "WITH RECURSIVE job_dependencies AS (SELECT id, name, arguments, arguments_hash, state, created_at, updated_at, started_at, completed_at, duration_ms, retry_count, retry_limit, parent_job_id, error" +
+                    "        FROM jobs" +
+                    "                                            WHERE id = ?" +
+                    "                                            UNION" +
+                    "                                            SELECT j.id, j.name, j.arguments, j.arguments_hash, j.state, j.created_at, j.updated_at, j.started_at, j.completed_at, j.duration_ms, j.retry_count, j.retry_limit, j.parent_job_id, j.error" +
+                    "                                            FROM jobs j" +
+                    "                                            INNER JOIN job_dependencies s ON s.id = j.parent_job_id)" +
+                    "SELECT *" +
+                    "FROM job_dependencies;",
+            nativeQuery = true
+    )
+    List<Job> findJobByIdAndItsDependencies(Long id);
+
+    List<Job> findJobsByParentJobId(Long parentJobId);
 }

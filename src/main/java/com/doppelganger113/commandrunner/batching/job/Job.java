@@ -5,8 +5,7 @@ import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
 import java.time.LocalDateTime;
-import java.util.HashMap;
-import java.util.Objects;
+import java.util.*;
 
 
 @Entity(name = "jobs")
@@ -24,7 +23,7 @@ public class Job {
     @Column(name = "arguments_hash")
     private String argumentsHash;
 
-    @Column(insertable = false)
+    @Column()
     @Enumerated(EnumType.STRING)
     private JobState state;
 
@@ -53,6 +52,17 @@ public class Job {
     private Long parentJobId;
 
     private String error;
+
+    @OneToMany(fetch = FetchType.LAZY, cascade = CascadeType.PERSIST)
+    @JoinColumn(name = "parent_job_id", referencedColumnName = "id")
+    private List<Job> children;
+
+    public Job() {
+    }
+
+    public Job(String name) {
+        this.name = name;
+    }
 
     public String getName() {
         return name;
@@ -164,6 +174,81 @@ public class Job {
 
     public void setCompletedAt(LocalDateTime completedAt) {
         this.completedAt = completedAt;
+    }
+
+    public List<Job> getChildren() {
+        if (children == null) {
+            return Collections.emptyList();
+        }
+        return children;
+    }
+
+    public void setChildren(List<Job> children) {
+        this.children = children;
+    }
+
+    public void addChild(Job child) {
+        if (children == null) {
+            children = new ArrayList<>();
+        }
+        children.add(child);
+    }
+
+    public boolean isSameArgumentsJob(Job other) {
+        if (this == other) return true;
+        if (other == null) return false;
+
+        return Objects.equals(name, other.name) && Objects.equals(arguments, other.arguments);
+    }
+
+    /**
+     * Flattens the tree structure into a list.
+     */
+    public List<Job> flatten() {
+        List<Job> flattened = new ArrayList<>();
+        flattened.add(this);
+
+        if (children == null) return flattened;
+
+        for (Job job : children) {
+            flattened.addAll(job.flatten());
+        }
+        return flattened;
+    }
+
+    public boolean replaceChildWith(Job job) {
+        if (children == null || children.isEmpty()) return false;
+
+        children = new ArrayList<>(children);
+        for (ListIterator<Job> iterator = children.listIterator(); iterator.hasNext(); ) {
+            Job child = iterator.next();
+            if (child.isSameArgumentsJob(job)) {
+                iterator.set(job);
+                return true;
+            }
+            boolean wasReplaced = child.replaceChildWith(job);
+            if (wasReplaced) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public Optional<Job> findChildJobByNameAndArgs(String name, HashMap<String, Object> args) {
+        if (children == null || children.isEmpty()) return Optional.empty();
+
+        for (Job child : children) {
+            Optional<Job> childJob = child.findChildJobByNameAndArgs(name, args);
+            if (childJob.isPresent()) {
+                return childJob;
+            }
+            if (child.name.equals(name) && child.arguments.equals(args)) {
+                return Optional.of(child);
+            }
+        }
+
+        return Optional.empty();
     }
 
     public boolean hasEqualConfiguration(Object o) {

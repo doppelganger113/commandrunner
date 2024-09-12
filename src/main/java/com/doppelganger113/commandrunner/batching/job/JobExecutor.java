@@ -82,7 +82,6 @@ public class JobExecutor {
         log.debug("job runner execution {}", jobId);
 
         try {
-
             jobRunner.before(args);
 
             boolean wasStarted = jobPersistenceService.setJobToRunning(jobId);

@@ -1,3 +1,4 @@
 .idea
 .mvn
 target
+*.DS_Store

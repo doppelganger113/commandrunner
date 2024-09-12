@@ -1,17 +1,11 @@
 package com.doppelganger113.commandrunner.batching.job;
 
-
-import com.doppelganger113.commandrunner.batching.job.dto.JobExecutionOptions;
-import com.doppelganger113.commandrunner.hash.ShaHash;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.Arrays;
-import java.util.List;
-import java.util.Objects;
-import java.util.Optional;
+import java.util.*;
 
 @Service
 public class JobPersistenceService {
@@ -21,23 +15,19 @@ public class JobPersistenceService {
     public static final List<JobState> JOB_DONE_STATES = List.of(JobState.COMPLETED, JobState.FAILED, JobState.STOPPED);
 
     private final JobRepository jobRepository;
-    private final ShaHash shaHash;
 
-    public JobPersistenceService(JobRepository jobRepository, ShaHash shaHash) {
+    public JobPersistenceService(JobRepository jobRepository) {
         this.jobRepository = jobRepository;
-        this.shaHash = shaHash;
     }
 
     public record JobCreationResult(Job job, boolean wasCreated) {
     }
 
     @Transactional(timeout = 3)
-    public JobCreationResult createNewJobOrGetExisting(JobExecutionOptions jobExecutionOptions) {
-        Job newJob = new Job();
-        newJob.setName(jobExecutionOptions.name());
-        newJob.setArguments(jobExecutionOptions.arguments());
-        newJob.setArgumentsHash(shaHash.hash(jobExecutionOptions.arguments()));
-        newJob.setState(JobState.READY);
+    public JobCreationResult createNewJobOrGetExisting(Job newJob) {
+        // TODO: 1. update persistence to add only jobs that do not exist
+        // TODO: 2. use ids of existing ones to replace running ones
+        // TODO: 3. retrieve all the jobs related
 
         // Jobs of same name and same arguments are only executed once
         Optional<Job> existingJob = jobRepository
@@ -47,11 +37,11 @@ public class JobPersistenceService {
         }
 
         // Jobs of same name and different arguments can be executed multiple times, BUT not at the same time!
-        Optional<Job> existingSameNameOngoingJob = jobRepository.findByNameAndStateNotInOrderByCreatedAtDesc(
+        Optional<Job> existingOngoingJob = jobRepository.findByNameAndStateNotInOrderByCreatedAtDesc(
                 newJob.getName(), JOB_DONE_STATES
         );
-        if (existingSameNameOngoingJob.isPresent()) {
-            return new JobCreationResult(existingSameNameOngoingJob.get(), false);
+        if (existingOngoingJob.isPresent()) {
+            return new JobCreationResult(existingOngoingJob.get(), false);
         }
 
         Job createdJob = jobRepository.save(newJob);
@@ -107,7 +97,7 @@ public class JobPersistenceService {
         if (isStopped) {
             throw new RuntimeException("Job " + job.getId() + " is not in state to be stopped: " + job.getState());
         }
-        String error = throwable.getLocalizedMessage() + " " +Arrays.toString(throwable.getStackTrace());
+        String error = throwable.getLocalizedMessage() + " " + Arrays.toString(throwable.getStackTrace());
         jobRepository.setJobFailed(jobId, error);
     }
 }

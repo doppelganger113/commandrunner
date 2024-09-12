@@ -1,10 +1,9 @@
 package com.doppelganger113.commandrunner.batching.job.dto;
 
-import com.doppelganger113.commandrunner.batching.job.Job;
 import com.doppelganger113.commandrunner.batching.job.JobPersistenceService;
 
 public record JobExecutionResponse(
-        Job job,
+        JobDto job,
         JobExecutionDescription description
 ) {
     public static JobExecutionResponse from(JobPersistenceService.JobCreationResult result) {
@@ -16,6 +15,6 @@ public record JobExecutionResponse(
             description = JobExecutionDescription.CREATED;
         }
 
-        return new JobExecutionResponse(result.job(), description);
+        return new JobExecutionResponse(JobDto.from(result.job()), description);
     }
 }
