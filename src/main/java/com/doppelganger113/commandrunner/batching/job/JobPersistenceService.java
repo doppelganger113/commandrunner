@@ -1,5 +1,8 @@
 package com.doppelganger113.commandrunner.batching.job;
 
+import com.doppelganger113.commandrunner.batching.job.dto.JobWithDependencies;
+import com.doppelganger113.commandrunner.batching.job.factories.JobFactory;
+import com.doppelganger113.commandrunner.batching.job.factories.JobWithDependenciesFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -15,37 +18,50 @@ public class JobPersistenceService {
     public static final List<JobState> JOB_DONE_STATES = List.of(JobState.COMPLETED, JobState.FAILED, JobState.STOPPED);
 
     private final JobRepository jobRepository;
+    private final JobFactory jobFactory;
 
-    public JobPersistenceService(JobRepository jobRepository) {
+    public JobPersistenceService(JobRepository jobRepository, JobFactory jobFactory) {
         this.jobRepository = jobRepository;
+        this.jobFactory = jobFactory;
     }
 
-    public record JobCreationResult(Job job, boolean wasCreated) {
+    public record JobCreationResult(JobWithDependencies job, boolean wasPersisted) {
     }
 
-    @Transactional(timeout = 3)
-    public JobCreationResult createNewJobOrGetExisting(Job newJob) {
-        // TODO: 1. update persistence to add only jobs that do not exist
-        // TODO: 2. use ids of existing ones to replace running ones
-        // TODO: 3. retrieve all the jobs related
+    public List<Job> getExistingJobs(List<Job> jobs) {
+        List<Object[]> nameUniqueJobIdPairs = jobs.stream()
+                .map(j -> new Object[]{j.getName(), j.getUniqueJobId()})
+                .toList();
 
-        // Jobs of same name and same arguments are only executed once
-        Optional<Job> existingJob = jobRepository
-                .findFirstByNameAndArgumentsHashOrderByIdDesc(newJob.getName(), newJob.getArgumentsHash());
-        if (existingJob.isPresent()) {
-            return new JobCreationResult(existingJob.get(), false);
+        return jobRepository.findJobsByNameAndUniqueJobIdPairs(nameUniqueJobIdPairs);
+    }
+
+    @Transactional
+    public JobCreationResult save(Job newJob) {
+        List<Job> jobs = newJob.flatten();
+
+        List<Job> existingJobs = getExistingJobs(jobs);
+        if (!existingJobs.isEmpty()) {
+            existingJobs.forEach(existingJob -> {
+                newJob.findJobByNameAndUniqueJobId(existingJob.getName(), existingJob.getUniqueJobId())
+                        .ifPresent(job -> {
+                            job.setReferenceJobId(existingJob.getId());
+                            job.setState(JobState.REFERENCED);
+                            job.setUniqueJobId(
+                                    jobFactory.updateUniqueJobIdForReference(existingJob.getUniqueJobId())
+                            );
+                        });
+            });
         }
 
-        // Jobs of same name and different arguments can be executed multiple times, BUT not at the same time!
-        Optional<Job> existingOngoingJob = jobRepository.findByNameAndStateNotInOrderByCreatedAtDesc(
-                newJob.getName(), JOB_DONE_STATES
-        );
-        if (existingOngoingJob.isPresent()) {
-            return new JobCreationResult(existingOngoingJob.get(), false);
+        JobWithDependencies jobWithDependencies = JobWithDependenciesFactory.fromJobs(jobs).orElseThrow();
+        if(jobWithDependencies.areAllDependenciesReferences()) {
+            return new JobCreationResult(jobWithDependencies, false);
         }
 
-        Job createdJob = jobRepository.save(newJob);
-        return new JobCreationResult(createdJob, true);
+        jobs = jobRepository.saveAll(jobs);
+
+        return new JobCreationResult(JobWithDependenciesFactory.fromJobs(jobs).orElseThrow(), true);
     }
 
     /**

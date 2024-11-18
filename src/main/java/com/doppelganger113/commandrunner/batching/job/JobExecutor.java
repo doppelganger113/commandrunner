@@ -6,22 +6,20 @@ import com.doppelganger113.commandrunner.batching.job.processors.JobRunner;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.lang.NonNull;
-import org.springframework.scheduling.annotation.Async;
-import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Service
-@EnableAsync
 public class JobExecutor {
 
     private final Logger log = LoggerFactory.getLogger(JobExecutor.class);
 
     private final JobPersistenceService jobPersistenceService;
 
-    public ConcurrentHashMap<String, JobProcessor> map = createMapFromJobProcessors(List.of(
+    private ConcurrentHashMap<String, JobProcessor> map = createMapFromJobProcessors(List.of(
             new JobRunner(),
             new EmptyRunner()
     ));
@@ -35,6 +33,10 @@ public class JobExecutor {
         jobProcessors.forEach(jobProcessor -> map.putIfAbsent(jobProcessor.getName(), jobProcessor));
 
         return new ConcurrentHashMap<>(map);
+    }
+
+    public int getJobCount() {
+        return map.size();
     }
 
     /**
@@ -69,7 +71,7 @@ public class JobExecutor {
                 .toList();
     }
 
-    @Async
+    @Transactional
     public void execute(@NonNull Job job) {
         Objects.requireNonNull(job);
         var args = job.getArguments();

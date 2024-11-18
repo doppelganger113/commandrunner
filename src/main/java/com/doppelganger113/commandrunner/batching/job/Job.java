@@ -20,8 +20,8 @@ public class Job {
     @Convert(converter = JsonHashMapConverter.class)
     private HashMap<String, Object> arguments;
 
-    @Column(name = "arguments_hash")
-    private String argumentsHash;
+    @Column(name = "unique_job_id")
+    private String uniqueJobId;
 
     @Column()
     @Enumerated(EnumType.STRING)
@@ -50,6 +50,9 @@ public class Job {
 
     @Column(name = "parent_job_id")
     private Long parentJobId;
+
+    @Column(name = "reference_job_id")
+    private Long referenceJobId;
 
     private String error;
 
@@ -80,12 +83,12 @@ public class Job {
         this.arguments = arguments;
     }
 
-    public String getArgumentsHash() {
-        return argumentsHash;
+    public String getUniqueJobId() {
+        return uniqueJobId;
     }
 
-    public void setArgumentsHash(String argumentsHash) {
-        this.argumentsHash = argumentsHash;
+    public void setUniqueJobId(String uniqueJobId) {
+        this.uniqueJobId = uniqueJobId;
     }
 
     public JobState getState() {
@@ -176,6 +179,14 @@ public class Job {
         this.completedAt = completedAt;
     }
 
+    public void setReferenceJobId(Long referenceJobId) {
+        this.referenceJobId = referenceJobId;
+    }
+
+    public Long getReferenceJobId() {
+        return referenceJobId;
+    }
+
     public List<Job> getChildren() {
         if (children == null) {
             return Collections.emptyList();
@@ -185,13 +196,6 @@ public class Job {
 
     public void setChildren(List<Job> children) {
         this.children = children;
-    }
-
-    public void addChild(Job child) {
-        if (children == null) {
-            children = new ArrayList<>();
-        }
-        children.add(child);
     }
 
     public boolean isSameArgumentsJob(Job other) {
@@ -235,6 +239,26 @@ public class Job {
         return false;
     }
 
+    public Optional<Job> findJobByNameAndUniqueJobId(String name, String uniqueJobId) {
+        if (Objects.equals(this.name, name) && Objects.equals(this.uniqueJobId, uniqueJobId)) {
+            return Optional.of(this);
+        }
+
+        if (children == null || children.isEmpty()) return Optional.empty();
+
+        for (Job child : children) {
+            Optional<Job> childJob = child.findJobByNameAndUniqueJobId(name, uniqueJobId);
+            if (childJob.isPresent()) {
+                return childJob;
+            }
+            if (Objects.equals(child.name, name) && Objects.equals(child.uniqueJobId, uniqueJobId)) {
+                return Optional.of(child);
+            }
+        }
+
+        return Optional.empty();
+    }
+
     public Optional<Job> findChildJobByNameAndArgs(String name, HashMap<String, Object> args) {
         if (children == null || children.isEmpty()) return Optional.empty();
 
@@ -258,7 +282,7 @@ public class Job {
 
         return Objects.equals(name, job.name)
                 && Objects.equals(arguments, job.arguments)
-                && Objects.equals(argumentsHash, job.argumentsHash)
+                && Objects.equals(uniqueJobId, job.uniqueJobId)
                 && Objects.equals(retryCount, job.retryCount)
                 && Objects.equals(retryLimit, job.retryLimit)
                 && Objects.equals(parentJobId, job.parentJobId);
@@ -271,7 +295,7 @@ public class Job {
         Job job = (Job) o;
         return Objects.equals(name, job.name)
                 && Objects.equals(arguments, job.arguments)
-                && Objects.equals(argumentsHash, job.argumentsHash)
+                && Objects.equals(uniqueJobId, job.uniqueJobId)
                 && state == job.state
                 && Objects.equals(createdAt, job.createdAt)
                 && Objects.equals(updatedAt, job.updatedAt)
@@ -281,12 +305,28 @@ public class Job {
                 && Objects.equals(retryCount, job.retryCount)
                 && Objects.equals(retryLimit, job.retryLimit)
                 && Objects.equals(parentJobId, job.parentJobId)
+                && Objects.equals(referenceJobId, job.referenceJobId)
                 && Objects.equals(error, job.error);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(name, arguments, argumentsHash, state, createdAt, updatedAt, startedAt, completedAt, durationMs, retryCount, retryLimit, parentJobId, error);
+        return Objects.hash(
+                name,
+                arguments,
+                uniqueJobId,
+                state,
+                createdAt,
+                updatedAt,
+                startedAt,
+                completedAt,
+                durationMs,
+                retryCount,
+                retryLimit,
+                parentJobId,
+                referenceJobId,
+                error
+        );
     }
 
     @Override
@@ -295,7 +335,7 @@ public class Job {
                 "id=" + id +
                 ", name='" + name + '\'' +
                 ", arguments=" + arguments +
-                ", argumentsHash=" + argumentsHash +
+                ", uniqueJobId=" + uniqueJobId +
                 ", state=" + state +
                 ", createdAt=" + createdAt +
                 ", updatedAt=" + updatedAt +
@@ -305,6 +345,7 @@ public class Job {
                 ", retryCount=" + retryCount +
                 ", retryLimit=" + retryLimit +
                 ", parentJobId=" + parentJobId +
+                ", referenceJobId=" + referenceJobId +
                 ", error=" + error +
                 '}';
     }

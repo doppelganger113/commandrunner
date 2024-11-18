@@ -1,11 +1,14 @@
-package com.doppelganger113.commandrunner.batching.job;
+package com.doppelganger113.commandrunner.batching.job.factories;
 
+import com.doppelganger113.commandrunner.batching.job.Job;
+import com.doppelganger113.commandrunner.batching.job.JobState;
 import com.doppelganger113.commandrunner.batching.job.dto.JobExecutionOptions;
 import com.doppelganger113.commandrunner.hash.ShaHash;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 @Service
 public class JobFactory {
@@ -20,7 +23,7 @@ public class JobFactory {
         Job newJob = new Job();
         newJob.setName(options.name());
         newJob.setArguments(options.arguments());
-        newJob.setArgumentsHash(shaHash.hash(options.arguments()));
+        newJob.setUniqueJobId(shaHash.hash(options.arguments()));
         newJob.setState(JobState.READY);
 
         return newJob;
@@ -42,5 +45,9 @@ public class JobFactory {
         }
 
         return job;
+    }
+
+    public String updateUniqueJobIdForReference(String uniqueJobId) {
+        return uniqueJobId + "-" + UUID.randomUUID();
     }
 }

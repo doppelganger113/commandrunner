@@ -1,18 +1,23 @@
 package com.doppelganger113.commandrunner.batching.job.dto;
 
-public enum JobExecutionDescription {
+public enum CreateJobResult {
     CREATED("CREATED"),
-    RUNNING("RUNNING"),
     REFERENCED("REFERENCED"),
-    COMPLETED("COMPLETED"),
     ;
     private final String value;
 
-    JobExecutionDescription(String value) {
+    CreateJobResult(String value) {
         this.value = value;
     }
 
     public String getValue() {
         return value;
+    }
+
+    @Override
+    public String toString() {
+        return "CreateJobResult{" +
+                "value='" + value + '\'' +
+                '}';
     }
 }

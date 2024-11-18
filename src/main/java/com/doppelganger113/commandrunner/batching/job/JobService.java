@@ -1,9 +1,8 @@
 package com.doppelganger113.commandrunner.batching.job;
 
-import com.doppelganger113.commandrunner.batching.job.dto.JobExecutionOptions;
-import com.doppelganger113.commandrunner.batching.job.dto.JobExecutionResponse;
-import com.doppelganger113.commandrunner.batching.job.dto.JobNode;
-import com.doppelganger113.commandrunner.batching.job.dto.JobDto;
+import com.doppelganger113.commandrunner.batching.job.dto.*;
+import com.doppelganger113.commandrunner.batching.job.factories.JobFactory;
+import com.doppelganger113.commandrunner.batching.job.factories.JobWithDependenciesFactory;
 import jakarta.validation.constraints.NotNull;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -21,6 +20,7 @@ public class JobService {
     private final JobPersistenceService jobPersistenceService;
     private final JobExecutor jobExecutor;
     private final JobFactory jobFactory;
+
 
     public JobService(JobRepository jobRepository, JobPersistenceService jobPersistenceService, JobExecutor jobExecutor, JobFactory jobFactory) {
         this.jobRepository = jobRepository;
@@ -48,12 +48,12 @@ public class JobService {
         jobRepository.setJobToStop(id);
     }
 
-    public Optional<JobNode> getJobAndDependenciesById(Long id) {
+    public Optional<JobWithDependencies> getJobAndDependenciesById(Long id) {
         List<Job> jobs = jobRepository.findJobByIdAndItsDependencies(id);
-        return JobNode.of(jobs);
+        return JobWithDependenciesFactory.fromJobs(jobs);
     }
 
-    public JobExecutionResponse executeJob(@NotNull JobExecutionOptions jobExecutionOptions) {
+    public CreateJobResponse createJob(@NotNull JobExecutionOptions jobExecutionOptions) {
         Objects.requireNonNull(jobExecutionOptions);
         if (jobExecutionOptions.hasDuplicate()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Duplicate job execution options");
@@ -75,11 +75,12 @@ public class JobService {
 
         Job newJob = jobFactory.from(jobExecutionOptions);
 
-        JobPersistenceService.JobCreationResult result = jobPersistenceService.createNewJobOrGetExisting(newJob);
-        if (result.wasCreated()) {
-            jobExecutor.execute(result.job());
-        }
+        JobPersistenceService.JobCreationResult creationResult = jobPersistenceService.save(newJob);
+        CreateJobResult result = creationResult.wasPersisted() ?
+                CreateJobResult.CREATED: CreateJobResult.REFERENCED;
 
-        return JobExecutionResponse.from(result);
+        // TODO: send an event about job creation or maybe not as it runs every 5sec
+
+        return new CreateJobResponse(creationResult.job(), result);
     }
 }

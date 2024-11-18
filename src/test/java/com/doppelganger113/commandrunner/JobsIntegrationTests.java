@@ -191,7 +191,7 @@ class JobsIntegrationTests {
                 .body(
                         "description", equalTo("CREATED"),
                         "job.id", not(notANumber()),
-                        "job.argumentsHash", equalTo(DEFAULT_SHA256),
+                        "job.uniqueJobId", equalTo(DEFAULT_SHA256),
                         "job.state", equalTo("READY"),
                         "job.arguments.age", equalTo(32)
                 );
@@ -227,7 +227,7 @@ class JobsIntegrationTests {
                 .body(
                         "description", equalTo("CREATED"),
                         "job.id", not(notANumber()),
-                        "job.argumentsHash", equalTo(DEFAULT_SHA256),
+                        "job.uniqueJobId", equalTo(DEFAULT_SHA256),
                         "job.state", equalTo("READY"),
                         "job.arguments.age", equalTo(32)
                 )
@@ -277,7 +277,7 @@ class JobsIntegrationTests {
                 .body(
                         "description", equalTo("CREATED"),
                         "job.id", not(notANumber()),
-                        "job.argumentsHash", equalTo(DEFAULT_SHA256),
+                        "job.uniqueJobId", equalTo(DEFAULT_SHA256),
                         "job.state", equalTo("READY"),
                         "job.arguments.age", equalTo(32)
                 )
@@ -293,7 +293,7 @@ class JobsIntegrationTests {
                 .body(
                         "description", equalTo("RUNNING"),
                         "job.id", equalTo(jobId),
-                        "job.argumentsHash", equalTo(DEFAULT_SHA256),
+                        "job.uniqueJobId", equalTo(DEFAULT_SHA256),
                         "job.state", equalTo("RUNNING"),
                         "job.arguments.age", equalTo(32)
                 );
@@ -335,7 +335,7 @@ class JobsIntegrationTests {
                         "job.name", equalTo(CustomJobProcessor.SLOW.name()),
                         "job.id", not(notANumber()),
                         "job.arguments", equalTo(null),
-                        "job.argumentsHash", equalTo(""),
+                        "job.uniqueJobId", equalTo(""),
                         "job.state", equalTo("READY")
                 )
                 .extract().path("job.id");
@@ -352,7 +352,7 @@ class JobsIntegrationTests {
                         "job.name", equalTo(CustomJobProcessor.SLOW.name()),
                         "job.id", not(notANumber()),
                         "job.arguments", equalTo(null),
-                        "job.argumentsHash", equalTo(""),
+                        "job.uniqueJobId", equalTo(""),
                         "job.state", equalTo("RUNNING")
                 )
                 .extract().path("job.id");
@@ -377,7 +377,7 @@ class JobsIntegrationTests {
                 .body(
                         "description", equalTo("CREATED"),
                         "job.id", not(notANumber()),
-                        "job.argumentsHash", equalTo(DEFAULT_SHA256),
+                        "job.uniqueJobId", equalTo(DEFAULT_SHA256),
                         "job.state", equalTo("READY"),
                         "job.arguments.age", equalTo(32)
                 )
@@ -395,7 +395,7 @@ class JobsIntegrationTests {
                 .body(
                         "description", equalTo("COMPLETED"),
                         "job.id", equalTo(jobId),
-                        "job.argumentsHash", equalTo(DEFAULT_SHA256),
+                        "job.uniqueJobId", equalTo(DEFAULT_SHA256),
                         "job.state", equalTo("COMPLETED"),
                         "job.arguments.age", equalTo(32)
                 );
@@ -433,7 +433,7 @@ class JobsIntegrationTests {
                 .body(
                         "description", equalTo("CREATED"),
                         "job.id", not(notANumber()),
-                        "job.argumentsHash", equalTo(DEFAULT_SHA256),
+                        "job.uniqueJobId", equalTo(DEFAULT_SHA256),
                         "job.state", equalTo("READY"),
                         "job.arguments.age", equalTo(32)
                 )
@@ -492,7 +492,7 @@ class JobsIntegrationTests {
                 .body(
                         "description", equalTo("CREATED"),
                         "job.id", not(notANumber()),
-                        "job.argumentsHash", equalTo(DEFAULT_SHA256),
+                        "job.uniqueJobId", equalTo(DEFAULT_SHA256),
                         "job.state", equalTo("READY"),
                         "job.arguments.age", equalTo(32)
                 )
@@ -552,7 +552,7 @@ class JobsIntegrationTests {
                 .body(
                         "description", equalTo("CREATED"),
                         "job.id", not(notANumber()),
-                        "job.argumentsHash", equalTo(DEFAULT_SHA256),
+                        "job.uniqueJobId", equalTo(DEFAULT_SHA256),
                         "job.state", equalTo("READY"),
                         "job.arguments.age", equalTo(32)
                 )
@@ -578,7 +578,7 @@ class JobsIntegrationTests {
                 .body(
                         "description", equalTo("RUNNING"),
                         "job.id", equalTo(jobId),
-                        "job.argumentsHash", equalTo(DEFAULT_SHA256),
+                        "job.uniqueJobId", equalTo(DEFAULT_SHA256),
                         "job.state", equalTo("STOPPING"),
                         "job.arguments.age", equalTo(32)
                 );
@@ -619,7 +619,7 @@ class JobsIntegrationTests {
                 .body(
                         "description", equalTo("CREATED"),
                         "job.id", not(notANumber()),
-                        "job.argumentsHash", equalTo(DEFAULT_SHA256),
+                        "job.uniqueJobId", equalTo(DEFAULT_SHA256),
                         "job.state", equalTo("READY"),
                         "job.arguments.age", equalTo(32)
                 )
@@ -647,7 +647,7 @@ class JobsIntegrationTests {
                 .body(
                         "description", equalTo("COMPLETED"),
                         "job.id", equalTo(jobId),
-                        "job.argumentsHash", equalTo(DEFAULT_SHA256),
+                        "job.uniqueJobId", equalTo(DEFAULT_SHA256),
                         "job.state", equalTo("STOPPED"),
                         "job.arguments.age", equalTo(32)
                 );
@@ -670,7 +670,7 @@ class JobsIntegrationTests {
                         "job.name", equalTo(CustomJobProcessor.THROWABLE.name()),
                         "job.id", not(notANumber()),
                         "job.arguments", equalTo(null),
-                        "job.argumentsHash", equalTo(""),
+                        "job.uniqueJobId", equalTo(""),
                         "job.state", equalTo("READY")
                 );
 
@@ -690,7 +690,7 @@ class JobsIntegrationTests {
                         "[0].durationMs", not(notANumber()),
                         "[0].completedAt", not(emptyString()),
                         "[0].arguments", equalTo(null),
-                        "[0].argumentsHash", equalTo(""),
+                        "[0].uniqueJobId", equalTo(""),
                         "[0].error", containsString("Failed again")
                 );
     }
@@ -729,19 +729,22 @@ class JobsIntegrationTests {
 
         JobExecutionOptions main = new JobExecutionOptions("my-job", null, List.of(child1, child2));
 
-        given()
+        var response = given()
                 .body(main)
                 .contentType(ContentType.JSON)
                 .when()
-                .post("/jobs")
+                .post("/jobs");
+
+        response.getBody().prettyPrint();
+                response
                 .then()
                 .statusCode(409)
                 .body(
-                        "error", equalTo("Conflict"),
-                        "status", equalTo(409),
-                        "path", equalTo("/jobs")
+                        "error", containsString("Duplicate job execution options")
                 );
     }
+
+    // TODO: add validation for a limit of jobs when creating
 
     @Test
     void givenJobWithChildJobsExistsInDb_whenWeQueryByJobId_thenReturnsJobWithItsChildJobs() {
@@ -800,7 +803,7 @@ class JobsIntegrationTests {
                         "job.name", equalTo(CustomJobProcessor.THROWABLE.name()),
                         "job.id", not(notANumber()),
                         "job.arguments", equalTo(null),
-                        "job.argumentsHash", equalTo(""),
+                        "job.uniqueJobId", equalTo(""),
                         "job.state", equalTo("READY")
                 );
 
@@ -824,7 +827,7 @@ class JobsIntegrationTests {
 //                        "durationMs", not(notANumber()),
 //                        "completedAt", not(emptyString()),
 //                        "arguments", equalTo(null),
-//                        "argumentsHash", equalTo(""),
+//                        "uniqueJobId", equalTo(""),
 //                        "error", equalTo(null)
 //                );
 //

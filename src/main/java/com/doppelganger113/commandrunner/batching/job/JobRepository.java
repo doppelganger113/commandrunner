@@ -12,7 +12,13 @@ public interface JobRepository extends ListCrudRepository<Job, Long> {
 
     Optional<Job> findByNameAndStateNotInOrderByCreatedAtDesc(String name, List<JobState> states);
 
-    Optional<Job> findFirstByNameAndArgumentsHashOrderByIdDesc(String name, String argumentsHash);
+    Optional<Job> findFirstByNameAndUniqueJobIdOrderByIdDesc(String name, String uniqueJobId);
+
+    @Query(
+            value = "SELECT id FROM jobs WHERE (name, unique_job_id) IN (?1)",
+            nativeQuery = true
+    )
+    List<Job> findJobsByNameAndUniqueJobIdPairs(List<Object[]> pairs);
 
     @Transactional
     @Modifying
@@ -52,11 +58,11 @@ public interface JobRepository extends ListCrudRepository<Job, Long> {
 
     // The query needs all fields
     @Query(
-            value = "WITH RECURSIVE job_dependencies AS (SELECT id, name, arguments, arguments_hash, state, created_at, updated_at, started_at, completed_at, duration_ms, retry_count, retry_limit, parent_job_id, error" +
+            value = "WITH RECURSIVE job_dependencies AS (SELECT id, name, arguments, unique_job_id, state, created_at, updated_at, started_at, completed_at, duration_ms, retry_count, retry_limit, parent_job_id, reference_job_id, error" +
                     "        FROM jobs" +
                     "                                            WHERE id = ?" +
                     "                                            UNION" +
-                    "                                            SELECT j.id, j.name, j.arguments, j.arguments_hash, j.state, j.created_at, j.updated_at, j.started_at, j.completed_at, j.duration_ms, j.retry_count, j.retry_limit, j.parent_job_id, j.error" +
+                    "                                            SELECT j.id, j.name, j.arguments, j.unique_job_id, j.state, j.created_at, j.updated_at, j.started_at, j.completed_at, j.duration_ms, j.retry_count, j.retry_limit, j.parent_job_id, j.reference_job_id, j.error" +
                     "                                            FROM jobs j" +
                     "                                            INNER JOIN job_dependencies s ON s.id = j.parent_job_id)" +
                     "SELECT *" +

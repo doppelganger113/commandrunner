@@ -8,7 +8,7 @@ import org.springframework.web.server.ResponseStatusException;
 @ControllerAdvice
 public class GlobalExceptionHandler {
 
-    public record BadRequestResponse(String message) {
+    public record BadRequestResponse(String error) {
     }
 
     @ExceptionHandler(ResponseStatusException.class)

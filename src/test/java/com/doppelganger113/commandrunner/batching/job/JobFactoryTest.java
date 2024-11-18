@@ -1,6 +1,7 @@
 package com.doppelganger113.commandrunner.batching.job;
 
 import com.doppelganger113.commandrunner.batching.job.dto.JobExecutionOptions;
+import com.doppelganger113.commandrunner.batching.job.factories.JobFactory;
 import com.doppelganger113.commandrunner.hash.ShaHash;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -63,12 +64,12 @@ class JobFactoryTest {
         );
 
         Job job = jobFactory.from(jobExecutionOptions5);
-        assertEquals("", job.getArgumentsHash());
+        assertEquals("", job.getUniqueJobId());
         assertEquals(job.getChildren().size(), 2);
         Job job4 = job.getChildren().stream().filter(j -> j.getName().equals("my-job_4")).findFirst().get();
         assertEquals(
                 "05870e47f19dd43433157e393bb38238433358d43ea84a61a7a384df76b3d7a5",
-                job4.getArgumentsHash()
+                job4.getUniqueJobId()
         );
     }
 }

@@ -50,13 +50,13 @@ public class JobController {
     }
 
     @GetMapping("/{id}/dependencies")
-    public JobNode getDependencies(@PathVariable long id) {
+    public JobWithDependencies getDependencies(@PathVariable long id) {
         return jobService.getJobAndDependenciesById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
     }
 
     @PostMapping
-    public JobExecutionResponse execute(@NotNull @RequestBody JobExecutionOptions jobExecutionOptions) {
-        return jobService.executeJob(jobExecutionOptions);
+    public CreateJobResponse create(@NotNull @RequestBody JobExecutionOptions jobExecutionOptions) {
+        return jobService.createJob(jobExecutionOptions);
     }
 }

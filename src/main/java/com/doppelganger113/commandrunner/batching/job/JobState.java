@@ -6,6 +6,7 @@ public enum JobState {
     STOPPING("STOPPING"),
     STOPPED("STOPPED"),
     FAILED("FAILED"),
+    REFERENCED("REFERENCED"),
     COMPLETED("COMPLETED");
 
     private final String state;
