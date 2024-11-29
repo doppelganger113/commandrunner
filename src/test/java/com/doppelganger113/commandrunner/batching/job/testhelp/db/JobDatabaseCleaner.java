@@ -1,5 +1,6 @@
-package com.doppelganger113.commandrunner.batching.job;
+package com.doppelganger113.commandrunner.batching.job.testhelp.db;
 
+import com.doppelganger113.commandrunner.batching.job.JobRepository;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import org.springframework.transaction.annotation.Transactional;

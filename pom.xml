@@ -89,18 +89,18 @@
 
         <!-- https://mvnrepository.com/artifact/com.jcraft/jsch -->
         <!-- FTP -->
-        <dependency>
-            <groupId>com.jcraft</groupId>
-            <artifactId>jsch</artifactId>
-            <version>0.1.55</version>
-        </dependency>
+<!--        <dependency>-->
+<!--            <groupId>com.jcraft</groupId>-->
+<!--            <artifactId>jsch</artifactId>-->
+<!--            <version>0.1.55</version>-->
+<!--        </dependency>-->
 
-        <!-- CSV -->
-        <dependency>
-            <groupId>de.siegmar</groupId>
-            <artifactId>fastcsv</artifactId>
-            <version>3.2.0</version>
-        </dependency>
+<!--        &lt;!&ndash; CSV &ndash;&gt;-->
+<!--        <dependency>-->
+<!--            <groupId>de.siegmar</groupId>-->
+<!--            <artifactId>fastcsv</artifactId>-->
+<!--            <version>3.2.0</version>-->
+<!--        </dependency>-->
 
         <!-- Test-->
         <dependency>
