@@ -7,10 +7,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.*;
+import java.util.stream.Collectors;
 
 @Service
 public class JobExecutor {
@@ -19,7 +19,9 @@ public class JobExecutor {
 
     private final JobPersistenceService jobPersistenceService;
 
-    private ConcurrentHashMap<String, JobProcessor> map = createMapFromJobProcessors(List.of(
+    private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
+
+    private final ConcurrentHashMap<String, JobProcessor> map = createMapFromJobProcessors(List.of(
             new JobRunner(),
             new EmptyRunner()
     ));
@@ -28,9 +30,13 @@ public class JobExecutor {
         this.jobPersistenceService = jobPersistenceService;
     }
 
-    private ConcurrentHashMap<String, JobProcessor> createMapFromJobProcessors(List<JobProcessor> jobProcessors) {
+    private ConcurrentHashMap<String, JobProcessor> createMapFromJobProcessors(
+            List<JobProcessor> jobProcessors
+    ) {
         HashMap<String, JobProcessor> map = new HashMap<>();
-        jobProcessors.forEach(jobProcessor -> map.putIfAbsent(jobProcessor.getName(), jobProcessor));
+        jobProcessors.forEach(jobProcessor ->
+                map.putIfAbsent(jobProcessor.getName(), jobProcessor)
+        );
 
         return new ConcurrentHashMap<>(map);
     }
@@ -46,14 +52,6 @@ public class JobExecutor {
         map.putIfAbsent(jobProcessor.getName(), jobProcessor);
     }
 
-    public void removeJobProcessor(JobProcessor jobProcessor) {
-        map.remove(jobProcessor.getName());
-    }
-
-    public void replaceJobProcessor(JobProcessor jobProcessor) {
-        map.replace(jobProcessor.getName(), jobProcessor);
-    }
-
     public Optional<JobProcessor> getJobRunnerByName(String name) {
         return Optional.ofNullable(map.get(name));
     }
@@ -65,13 +63,12 @@ public class JobExecutor {
     public record JobSettings(String name) {
     }
 
-    public List<JobSettings> getAvailableJobs() {
+    public Set<JobSettings> getAvailableJobs() {
         return map.keySet().stream()
                 .map(JobSettings::new)
-                .toList();
+                .collect(Collectors.toSet());
     }
 
-    @Transactional
     public void execute(@NonNull Job job) {
         Objects.requireNonNull(job);
         var args = job.getArguments();

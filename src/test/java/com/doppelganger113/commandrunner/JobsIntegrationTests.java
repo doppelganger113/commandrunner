@@ -1,21 +1,26 @@
 package com.doppelganger113.commandrunner;
 
-import com.doppelganger113.commandrunner.batching.job.Job;
-import com.doppelganger113.commandrunner.batching.job.JobExecutor;
-import com.doppelganger113.commandrunner.batching.job.JobRepository;
+import com.doppelganger113.commandrunner.batching.job.*;
 import com.doppelganger113.commandrunner.batching.job.dto.JobExecutionOptions;
 import com.doppelganger113.commandrunner.batching.job.dto.JobUpdate;
 import com.doppelganger113.commandrunner.batching.job.processors.JobProcessor;
 import groovy.util.MapEntry;
 import io.restassured.RestAssured;
 import io.restassured.http.ContentType;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.orm.jpa.TestEntityManager;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.context.annotation.Import;
+import org.springframework.context.annotation.ImportResource;
+import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.transaction.annotation.Transactional;
 import org.testcontainers.containers.PostgreSQLContainer;
 
 import java.util.*;
@@ -28,10 +33,11 @@ import static org.hamcrest.Matchers.*;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @TestConfiguration(proxyBeanMethods = false)
+@Import(JobTestConfiguration.class)
 class JobsIntegrationTests {
 
     // This number is taken as fair enough time for CI/CD when a slow machine is executing tests
-    private static final int JOB_SLOWDOWN_MLS = 200;
+    private static final int JOB_SLOWDOWN_MLS = 500;
 
     static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>(
             "postgres:16"
@@ -44,7 +50,10 @@ class JobsIntegrationTests {
     private JobRepository jobRepository;
 
     @Autowired
-    JobExecutor jobExecutor;
+    private ConcurrentJobExecutor jobExecutor;
+
+    @Autowired
+    private JobDatabaseCleaner cleaner;
 
     private static final HashMap<String, Object> DEFAULT_HASH_MAP = new HashMap<>(Map.ofEntries(
             Map.entry("age", 32)
@@ -165,10 +174,14 @@ class JobsIntegrationTests {
         postgres.stop();
     }
 
+    @PersistenceContext
+    private EntityManager entityManager;
+
     @BeforeEach
     void beforeEach() {
         RestAssured.baseURI = "http://localhost:" + port;
-        jobRepository.deleteAll();
+
+        cleaner.cleanDatabase();
 
         // Drain queues
         CustomJobProcessor.DEFAULT.blockingDeque.clear();
@@ -189,11 +202,11 @@ class JobsIntegrationTests {
                 .then()
                 .statusCode(200)
                 .body(
-                        "description", equalTo("CREATED"),
-                        "job.id", not(notANumber()),
-                        "job.uniqueJobId", equalTo(DEFAULT_SHA256),
-                        "job.state", equalTo("READY"),
-                        "job.arguments.age", equalTo(32)
+                        "result", equalTo("CREATED"),
+                        "data.id", not(notANumber()),
+                        "data.uniqueJobId", equalTo(DEFAULT_SHA256),
+                        "data.state", equalTo("READY"),
+                        "data.arguments.age", equalTo(32)
                 );
 
         CustomJobProcessor.DEFAULT.waitForCompletionOrFail();
@@ -225,13 +238,13 @@ class JobsIntegrationTests {
                 .then()
                 .statusCode(200)
                 .body(
-                        "description", equalTo("CREATED"),
-                        "job.id", not(notANumber()),
-                        "job.uniqueJobId", equalTo(DEFAULT_SHA256),
-                        "job.state", equalTo("READY"),
-                        "job.arguments.age", equalTo(32)
+                        "result", equalTo("CREATED"),
+                        "data.id", not(notANumber()),
+                        "data.uniqueJobId", equalTo(DEFAULT_SHA256),
+                        "data.state", equalTo("READY"),
+                        "data.arguments.age", equalTo(32)
                 )
-                .extract().path("job.id");
+                .extract().path("data.id");
 
 
         CustomJobProcessor.DEFAULT.waitForCompletionOrFail();
@@ -264,9 +277,10 @@ class JobsIntegrationTests {
     }
 
     @Test
-    void givenNewJobCreation_whenIdenticalJobWasCreatedAndRunning_thenReturnPreviousJob() {
+    void givenNewJobCreation_whenIdenticalJobWasCreatedAndRunning_thenReturnReferencedJob() {
         jobExecutor.addJobProcessor(CustomJobProcessor.SLOW);
 
+        // We create a slow job
         Integer jobId = given()
                 .body(new JobExecutionOptions(CustomJobProcessor.SLOW.name(), DEFAULT_HASH_MAP, null))
                 .contentType(ContentType.JSON)
@@ -275,14 +289,15 @@ class JobsIntegrationTests {
                 .then()
                 .statusCode(200)
                 .body(
-                        "description", equalTo("CREATED"),
-                        "job.id", not(notANumber()),
-                        "job.uniqueJobId", equalTo(DEFAULT_SHA256),
-                        "job.state", equalTo("READY"),
-                        "job.arguments.age", equalTo(32)
+                        "result", equalTo("CREATED"),
+                        "data.id", not(notANumber()),
+                        "data.uniqueJobId", equalTo(DEFAULT_SHA256),
+                        "data.state", equalTo("READY"),
+                        "data.arguments.age", equalTo(32)
                 )
-                .extract().path("job.id");
+                .extract().path("data.id");
 
+        // We try to run again the same slow job and get the reference to it
         given()
                 .body(new JobExecutionOptions(CustomJobProcessor.SLOW.name(), DEFAULT_HASH_MAP, null))
                 .contentType(ContentType.JSON)
@@ -291,15 +306,17 @@ class JobsIntegrationTests {
                 .then()
                 .statusCode(200)
                 .body(
-                        "description", equalTo("RUNNING"),
-                        "job.id", equalTo(jobId),
-                        "job.uniqueJobId", equalTo(DEFAULT_SHA256),
-                        "job.state", equalTo("RUNNING"),
-                        "job.arguments.age", equalTo(32)
+                        "result", equalTo("CREATED"),
+                        "data.id", notNullValue(),
+                        "data.referenceJobId", equalTo(jobId),
+                        "data.uniqueJobId", containsString(DEFAULT_SHA256 + "_"),
+                        "data.state", equalTo("REFERENCED"),
+                        "data.arguments.age", equalTo(32)
                 );
 
         CustomJobProcessor.SLOW.waitForCompletionOrFail();
 
+        // After waiting for completion we check if the job is done
         given()
                 .contentType(ContentType.JSON)
                 .when()
@@ -307,14 +324,14 @@ class JobsIntegrationTests {
                 .then()
                 .statusCode(200)
                 .body(
-                        ".", hasSize(1),
-                        "[0].id", equalTo(jobId),
-                        "[0].state", equalTo("COMPLETED"),
-                        "[0].createdAt", not(emptyString()),
-                        "[0].startedAt", not(emptyString()),
-                        "[0].completedAt", not(emptyString()),
-                        "[0].durationMs", not(notANumber()),
-                        "[0].arguments.age", equalTo(32)
+                        ".", hasSize(2),
+                        "[1].id", equalTo(jobId),
+                        "[1].state", equalTo("COMPLETED"),
+                        "[1].createdAt", not(emptyString()),
+                        "[1].startedAt", not(emptyString()),
+                        "[1].completedAt", not(emptyString()),
+                        "[1].durationMs", not(notANumber()),
+                        "[1].arguments.age", equalTo(32)
                 );
     }
 
@@ -322,7 +339,7 @@ class JobsIntegrationTests {
     void givenNewJobCreation_whenJobWithSameNameButDiffArgsIsRunning_thenReturnStatus() {
         jobExecutor.addJobProcessor(CustomJobProcessor.SLOW);
 
-        // Create the
+        // Create the slow job
         Integer jobId = given()
                 .body(new JobExecutionOptions(CustomJobProcessor.SLOW.name(), null, null))
                 .contentType(ContentType.JSON)
@@ -331,15 +348,19 @@ class JobsIntegrationTests {
                 .then()
                 .statusCode(200)
                 .body(
-                        "description", equalTo("CREATED"),
-                        "job.name", equalTo(CustomJobProcessor.SLOW.name()),
-                        "job.id", not(notANumber()),
-                        "job.arguments", equalTo(null),
-                        "job.uniqueJobId", equalTo(""),
-                        "job.state", equalTo("READY")
+                        "result", equalTo("CREATED"),
+                        "data.name", equalTo(CustomJobProcessor.SLOW.name()),
+                        "data.id", not(notANumber()),
+                        "data.arguments", equalTo(null),
+                        "data.uniqueJobId", equalTo(""),
+                        "data.state", equalTo("READY")
                 )
-                .extract().path("job.id");
+                .extract().path("data.id");
 
+        /*
+         Create slow job again, but with different arguments, but should not be COMPLETED as it cannot run
+         immediately
+        */
         Integer jobId2 = given()
                 .body(new JobExecutionOptions(CustomJobProcessor.SLOW.name(), DEFAULT_HASH_MAP, null))
                 .contentType(ContentType.JSON)
@@ -348,16 +369,16 @@ class JobsIntegrationTests {
                 .then()
                 .statusCode(200)
                 .body(
-                        "description", equalTo("RUNNING"),
-                        "job.name", equalTo(CustomJobProcessor.SLOW.name()),
-                        "job.id", not(notANumber()),
-                        "job.arguments", equalTo(null),
-                        "job.uniqueJobId", equalTo(""),
-                        "job.state", equalTo("RUNNING")
+                        "result", equalTo("CREATED"),
+                        "data.name", equalTo(CustomJobProcessor.SLOW.name()),
+                        "data.id", not(notANumber()),
+                        "data.arguments.age", equalTo(32),
+                        "data.uniqueJobId", equalTo("9ae4b21c4362bce63da43cb728c63763a4f400b9ae9805b06ae6ecb924dd0f9b"),
+                        "data.state", equalTo("READY")
                 )
-                .extract().path("job.id");
+                .extract().path("data.id");
 
-        Assertions.assertEquals(jobId, jobId2);
+        Assertions.assertNotEquals(jobId, jobId2);
     }
 
     @Test
@@ -375,13 +396,13 @@ class JobsIntegrationTests {
                 .then()
                 .statusCode(200)
                 .body(
-                        "description", equalTo("CREATED"),
-                        "job.id", not(notANumber()),
-                        "job.uniqueJobId", equalTo(DEFAULT_SHA256),
-                        "job.state", equalTo("READY"),
-                        "job.arguments.age", equalTo(32)
+                        "result", equalTo("CREATED"),
+                        "data.id", not(notANumber()),
+                        "data.uniqueJobId", equalTo(DEFAULT_SHA256),
+                        "data.state", equalTo("READY"),
+                        "data.arguments.age", equalTo(32)
                 )
-                .extract().path("job.id");
+                .extract().path("data.id");
 
         CustomJobProcessor.DEFAULT.waitForCompletionOrFail();
 
@@ -393,11 +414,14 @@ class JobsIntegrationTests {
                 .then()
                 .statusCode(200)
                 .body(
-                        "description", equalTo("COMPLETED"),
-                        "job.id", equalTo(jobId),
-                        "job.uniqueJobId", equalTo(DEFAULT_SHA256),
-                        "job.state", equalTo("COMPLETED"),
-                        "job.arguments.age", equalTo(32)
+                        "result", equalTo("CREATED"),
+                        "data.id", notNullValue(),
+                        "data.uniqueJobId", containsString(DEFAULT_SHA256 + "_"),
+                        "data.state", equalTo("REFERENCED"),
+                        "data.arguments.age", equalTo(32),
+                        "data.referenceJobId", equalTo(jobId),
+                        "data.error", nullValue(),
+                        "data.dependencies", hasSize(0)
                 );
 
         given()
@@ -407,7 +431,7 @@ class JobsIntegrationTests {
                 .then()
                 .statusCode(200)
                 .body(
-                        ".", hasSize(1),
+                        ".", hasSize(2),
                         "[0].id", equalTo(jobId),
                         "[0].state", equalTo("COMPLETED"),
                         "[0].createdAt", not(emptyString()),
@@ -422,7 +446,7 @@ class JobsIntegrationTests {
     void givenStoppingJob_whenThatJobIsRunning_thenReturnStoppingStateAndStoppedState() {
         jobExecutor.addJobProcessor(CustomJobProcessor.SLOW);
 
-        // Create a new job
+        // Create a new slow job
         Integer jobId = given()
                 .body(new JobExecutionOptions(CustomJobProcessor.SLOW.name(), DEFAULT_HASH_MAP, null))
                 .contentType(ContentType.JSON)
@@ -431,13 +455,13 @@ class JobsIntegrationTests {
                 .then()
                 .statusCode(200)
                 .body(
-                        "description", equalTo("CREATED"),
-                        "job.id", not(notANumber()),
-                        "job.uniqueJobId", equalTo(DEFAULT_SHA256),
-                        "job.state", equalTo("READY"),
-                        "job.arguments.age", equalTo(32)
+                        "result", equalTo("CREATED"),
+                        "data.id", not(notANumber()),
+                        "data.uniqueJobId", equalTo(DEFAULT_SHA256),
+                        "data.state", equalTo("READY"),
+                        "data.arguments.age", equalTo(32)
                 )
-                .extract().path("job.id");
+                .extract().path("data.id");
 
         // Stop the job
         given()
@@ -490,13 +514,13 @@ class JobsIntegrationTests {
                 .then()
                 .statusCode(200)
                 .body(
-                        "description", equalTo("CREATED"),
-                        "job.id", not(notANumber()),
-                        "job.uniqueJobId", equalTo(DEFAULT_SHA256),
-                        "job.state", equalTo("READY"),
-                        "job.arguments.age", equalTo(32)
+                        "result", equalTo("CREATED"),
+                        "data.id", not(notANumber()),
+                        "data.uniqueJobId", equalTo(DEFAULT_SHA256),
+                        "data.state", equalTo("READY"),
+                        "data.arguments.age", equalTo(32)
                 )
-                .extract().path("job.id");
+                .extract().path("data.id");
 
         // Stop the job
         given()
@@ -550,13 +574,13 @@ class JobsIntegrationTests {
                 .then()
                 .statusCode(200)
                 .body(
-                        "description", equalTo("CREATED"),
-                        "job.id", not(notANumber()),
-                        "job.uniqueJobId", equalTo(DEFAULT_SHA256),
-                        "job.state", equalTo("READY"),
-                        "job.arguments.age", equalTo(32)
+                        "result", equalTo("CREATED"),
+                        "data.id", not(notANumber()),
+                        "data.uniqueJobId", equalTo(DEFAULT_SHA256),
+                        "data.state", equalTo("READY"),
+                        "data.arguments.age", equalTo(32)
                 )
-                .extract().path("job.id");
+                .extract().path("data.id");
 
         // Stop the job
         given()
@@ -576,16 +600,17 @@ class JobsIntegrationTests {
                 .then()
                 .statusCode(200)
                 .body(
-                        "description", equalTo("RUNNING"),
-                        "job.id", equalTo(jobId),
-                        "job.uniqueJobId", equalTo(DEFAULT_SHA256),
-                        "job.state", equalTo("STOPPING"),
-                        "job.arguments.age", equalTo(32)
+                        "result", equalTo("CREATED"),
+                        "data.id", notNullValue(),
+                        "data.referenceJobId", equalTo(jobId),
+                        "data.uniqueJobId", containsString(DEFAULT_SHA256 + "_"),
+                        "data.state", equalTo("REFERENCED"),
+                        "data.arguments.age", equalTo(32)
                 );
 
         CustomJobProcessor.SLOW.waitForCompletionOrFail();
 
-        // Verify if the job was failed
+        // Verify if the job has failed
         given()
                 .contentType(ContentType.JSON)
                 .when()
@@ -617,13 +642,13 @@ class JobsIntegrationTests {
                 .then()
                 .statusCode(200)
                 .body(
-                        "description", equalTo("CREATED"),
-                        "job.id", not(notANumber()),
-                        "job.uniqueJobId", equalTo(DEFAULT_SHA256),
-                        "job.state", equalTo("READY"),
-                        "job.arguments.age", equalTo(32)
+                        "result", equalTo("CREATED"),
+                        "data.id", not(notANumber()),
+                        "data.uniqueJobId", equalTo(DEFAULT_SHA256),
+                        "data.state", equalTo("READY"),
+                        "data.arguments.age", equalTo(32)
                 )
-                .extract().path("job.id");
+                .extract().path("data.id");
 
         // Stop the job
         given()
@@ -645,11 +670,12 @@ class JobsIntegrationTests {
                 .then()
                 .statusCode(200)
                 .body(
-                        "description", equalTo("COMPLETED"),
-                        "job.id", equalTo(jobId),
-                        "job.uniqueJobId", equalTo(DEFAULT_SHA256),
-                        "job.state", equalTo("STOPPED"),
-                        "job.arguments.age", equalTo(32)
+                        "result", equalTo("CREATED"),
+                        "data.id", notNullValue(),
+                        "data.referenceJobId", equalTo(jobId),
+                        "data.uniqueJobId", containsString(DEFAULT_SHA256 + "_"),
+                        "data.state", equalTo("REFERENCED"),
+                        "data.arguments.age", equalTo(32)
                 );
     }
 
@@ -658,7 +684,7 @@ class JobsIntegrationTests {
         jobExecutor.addJobProcessor(CustomJobProcessor.THROWABLE);
 
         // Create a failing job
-        given()
+        var res = given()
                 .body(new JobExecutionOptions(CustomJobProcessor.THROWABLE.name(), null, null))
                 .contentType(ContentType.JSON)
                 .when()
@@ -666,12 +692,12 @@ class JobsIntegrationTests {
                 .then()
                 .statusCode(200)
                 .body(
-                        "description", equalTo("CREATED"),
-                        "job.name", equalTo(CustomJobProcessor.THROWABLE.name()),
-                        "job.id", not(notANumber()),
-                        "job.arguments", equalTo(null),
-                        "job.uniqueJobId", equalTo(""),
-                        "job.state", equalTo("READY")
+                        "result", equalTo("CREATED"),
+                        "data.name", equalTo(CustomJobProcessor.THROWABLE.name()),
+                        "data.id", not(notANumber()),
+                        "data.arguments", equalTo(null),
+                        "data.uniqueJobId", equalTo(""),
+                        "data.state", equalTo("READY")
                 );
 
         CustomJobProcessor.THROWABLE.waitForCompletionOrFail();
@@ -729,14 +755,11 @@ class JobsIntegrationTests {
 
         JobExecutionOptions main = new JobExecutionOptions("my-job", null, List.of(child1, child2));
 
-        var response = given()
+        given()
                 .body(main)
                 .contentType(ContentType.JSON)
                 .when()
-                .post("/jobs");
-
-        response.getBody().prettyPrint();
-                response
+                .post("/jobs")
                 .then()
                 .statusCode(409)
                 .body(
@@ -794,19 +817,18 @@ class JobsIntegrationTests {
                 .when()
                 .post("/jobs");
 
-        res.getBody().prettyPrint();
+        res.body().prettyPrint();
 
         res.then()
                 .statusCode(200)
                 .body(
-                        "description", equalTo("CREATED"),
-                        "job.name", equalTo(CustomJobProcessor.THROWABLE.name()),
-                        "job.id", not(notANumber()),
-                        "job.arguments", equalTo(null),
-                        "job.uniqueJobId", equalTo(""),
-                        "job.state", equalTo("READY")
+                        "result", equalTo("CREATED"),
+                        "data.name", equalTo(CustomJobProcessor.THROWABLE.name()),
+                        "data.id", not(notANumber()),
+                        "data.arguments", equalTo(null),
+                        "data.uniqueJobId", equalTo(""),
+                        "data.state", equalTo("READY")
                 );
-
 
         // TODO: finish this check as we can now save and want to verify if the state in the db is correct
         // TODO: also see if it's possible to add child node parent ids as they are missing in the response above

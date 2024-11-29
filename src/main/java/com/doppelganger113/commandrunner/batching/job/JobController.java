@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
+import java.util.Set;
 
 @RestController
 @RequestMapping("jobs")
@@ -30,7 +31,7 @@ public class JobController {
     }
 
     @GetMapping("/available")
-    public List<JobExecutor.JobSettings> getExistingJobs() {
+    public Set<JobExecutor.JobSettings> getExistingJobs() {
         return jobService.getAvailableJobs();
     }
 

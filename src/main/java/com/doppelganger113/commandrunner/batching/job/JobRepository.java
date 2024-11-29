@@ -3,8 +3,10 @@ package com.doppelganger113.commandrunner.batching.job;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.ListCrudRepository;
+import org.springframework.data.repository.query.Param;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -15,10 +17,10 @@ public interface JobRepository extends ListCrudRepository<Job, Long> {
     Optional<Job> findFirstByNameAndUniqueJobIdOrderByIdDesc(String name, String uniqueJobId);
 
     @Query(
-            value = "SELECT id FROM jobs WHERE (name, unique_job_id) IN (?1)",
+            value = "SELECT * FROM jobs WHERE (name, unique_job_id) IN (:pairs)",
             nativeQuery = true
     )
-    List<Job> findJobsByNameAndUniqueJobIdPairs(List<Object[]> pairs);
+    List<Job> findJobsByNameAndUniqueJobIdPairs(@Param("pairs") List<String[]> pairs);
 
     @Transactional
     @Modifying
@@ -72,4 +74,8 @@ public interface JobRepository extends ListCrudRepository<Job, Long> {
     List<Job> findJobByIdAndItsDependencies(Long id);
 
     List<Job> findJobsByParentJobId(Long parentJobId);
+
+    @Modifying
+    @Query(value = "DELETE FROM jobs WHERE jobs.reference_job_id IS NOT NULL", nativeQuery = true)
+    void deleteOriginalJobs();
 }

@@ -139,6 +139,15 @@ class JobWithDependenciesFactoryTest {
     }
 
     @Test
+    void testOfWhenListHasOne() {
+        Job job = new Job();
+        job.setName("failure_job");
+        Optional<JobWithDependencies> node = JobWithDependenciesFactory.fromJobs(List.of(job));
+        assertTrue(node.isPresent());
+        assertEquals(1, node.get().size());
+    }
+
+    @Test
     void testFindLeafNodes() {
         JobWithDependencies rootNode = JobWithDependenciesFactory.fromJobs(jobsSort1).orElseThrow();
         assertNotNull(rootNode);
@@ -146,6 +155,17 @@ class JobWithDependenciesFactoryTest {
         assertEquals(4, leafNodes.size());
         long[] leafIds = leafNodes.stream().mapToLong(JobWithDependencies::id).toArray();
         assertArrayEquals(new long[]{4, 10, 9, 8}, leafIds);
+    }
+
+    @Test
+    void testFindLeafNodes_whenOneElement() {
+        JobWithDependencies rootNode = JobWithDependenciesFactory.fromJobs(
+                List.of(newJob(1, null))
+        ).orElseThrow();
+        assertNotNull(rootNode);
+        List<JobWithDependencies> leafNodes = JobWithDependenciesFactory.findLeafNodes(rootNode);
+        assertEquals(1, leafNodes.size());
+        assertEquals(1, leafNodes.getFirst().id());
     }
 
     @Test

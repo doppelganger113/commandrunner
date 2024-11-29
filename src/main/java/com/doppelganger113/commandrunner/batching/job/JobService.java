@@ -12,17 +12,23 @@ import org.springframework.web.server.ResponseStatusException;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 
 @Service
 public class JobService {
 
     private final JobRepository jobRepository;
     private final JobPersistenceService jobPersistenceService;
-    private final JobExecutor jobExecutor;
+    private final ConcurrentJobExecutor jobExecutor;
     private final JobFactory jobFactory;
 
 
-    public JobService(JobRepository jobRepository, JobPersistenceService jobPersistenceService, JobExecutor jobExecutor, JobFactory jobFactory) {
+    public JobService(
+            JobRepository jobRepository,
+            JobPersistenceService jobPersistenceService,
+            ConcurrentJobExecutor jobExecutor,
+            JobFactory jobFactory
+    ) {
         this.jobRepository = jobRepository;
         this.jobPersistenceService = jobPersistenceService;
         this.jobExecutor = jobExecutor;
@@ -36,7 +42,7 @@ public class JobService {
                 .toList();
     }
 
-    public List<JobExecutor.JobSettings> getAvailableJobs() {
+    public Set<JobExecutor.JobSettings> getAvailableJobs() {
         return jobExecutor.getAvailableJobs();
     }
 
@@ -61,7 +67,7 @@ public class JobService {
 
         List<String> unsupportedJobs = jobExecutionOptions.flatten().stream()
                 .map(JobExecutionOptions::name)
-                .filter(name -> !jobExecutor.hasExecutor(name))
+                .filter(name -> !jobExecutor.hasJobProcessor(name))
                 .toList();
 
         if (!unsupportedJobs.isEmpty()) {
@@ -77,9 +83,12 @@ public class JobService {
 
         JobPersistenceService.JobCreationResult creationResult = jobPersistenceService.save(newJob);
         CreateJobResult result = creationResult.wasPersisted() ?
-                CreateJobResult.CREATED: CreateJobResult.REFERENCED;
+                CreateJobResult.CREATED : CreateJobResult.REFERENCED;
 
-        // TODO: send an event about job creation or maybe not as it runs every 5sec
+        if (creationResult.wasPersisted()) {
+            creationResult.job().findNonRefLeafDependencies()
+                    .forEach(leafJob -> jobExecutor.tryExecuteAsync(newJob));
+        }
 
         return new CreateJobResponse(creationResult.job(), result);
     }

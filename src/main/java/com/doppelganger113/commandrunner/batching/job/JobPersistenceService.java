@@ -3,6 +3,9 @@ package com.doppelganger113.commandrunner.batching.job;
 import com.doppelganger113.commandrunner.batching.job.dto.JobWithDependencies;
 import com.doppelganger113.commandrunner.batching.job.factories.JobFactory;
 import com.doppelganger113.commandrunner.batching.job.factories.JobWithDependenciesFactory;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
+import jakarta.persistence.Query;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -28,19 +31,70 @@ public class JobPersistenceService {
     public record JobCreationResult(JobWithDependencies job, boolean wasPersisted) {
     }
 
-    public List<Job> getExistingJobs(List<Job> jobs) {
-        List<Object[]> nameUniqueJobIdPairs = jobs.stream()
-                .map(j -> new Object[]{j.getName(), j.getUniqueJobId()})
-                .toList();
+    public record Pair(String name, String uniqueJobId) {
+    }
 
-        return jobRepository.findJobsByNameAndUniqueJobIdPairs(nameUniqueJobIdPairs);
+    @PersistenceContext
+    private EntityManager em;
+
+    private static String buildInValuesClause(List<Job> jobs) {
+        StringBuilder valuesClause = new StringBuilder();
+        for (int i = 0; i < jobs.size(); i++) {
+            Job job = jobs.get(i);
+            valuesClause
+                    .append("('")
+                    .append(job.getName())
+                    .append("', '")
+                    .append(job.getUniqueJobId())
+                    .append("')");
+            if (i < jobs.size() - 1) {
+                valuesClause.append(", ");
+            }
+        }
+
+        return valuesClause.toString();
+    }
+
+    public List<Job> findJobsByPairs(List<Job> jobs) {
+        if (jobs.isEmpty()) {
+            return List.of(); // Return empty result if no pairs
+        }
+
+        // Build VALUES part of the query dynamically
+        StringBuilder valuesClause = new StringBuilder();
+        for (int i = 0; i < jobs.size(); i++) {
+            valuesClause.append("(:name").append(i).append(", :uniqueId").append(i).append(")");
+            if (i < jobs.size() - 1) {
+                valuesClause.append(", ");
+            }
+        }
+
+        String sql = """
+            WITH input_pairs(name, unique_job_id) AS (VALUES %s)
+            SELECT j.*
+            FROM jobs j
+            WHERE (j.name, j.unique_job_id) IN (SELECT * FROM input_pairs)
+        """.formatted(valuesClause);
+
+        log.info("FORM: {}", sql);
+
+        Query query = em.createNativeQuery(sql, Job.class);
+
+        // Set parameters dynamically
+        for (int i = 0; i < jobs.size(); i++) {
+            query.setParameter("name" + i, jobs.get(i).getName());
+            query.setParameter("uniqueId" + i, jobs.get(i).getUniqueJobId());
+        }
+
+        return query.getResultList();
     }
 
     @Transactional
     public JobCreationResult save(Job newJob) {
         List<Job> jobs = newJob.flatten();
 
-        List<Job> existingJobs = getExistingJobs(jobs);
+        // TODO: later optimize to be a DB update
+        List<Job> existingJobs = findJobsByPairs(jobs);
         if (!existingJobs.isEmpty()) {
             existingJobs.forEach(existingJob -> {
                 newJob.findJobByNameAndUniqueJobId(existingJob.getName(), existingJob.getUniqueJobId())
@@ -54,14 +108,18 @@ public class JobPersistenceService {
             });
         }
 
-        JobWithDependencies jobWithDependencies = JobWithDependenciesFactory.fromJobs(jobs).orElseThrow();
-        if(jobWithDependencies.areAllDependenciesReferences()) {
-            return new JobCreationResult(jobWithDependencies, false);
+        // TODO: needs logic for creation of new jobs
+        if(existingJobs.size() == jobs.size()) {
+            JobWithDependencies jobWithDependencies = JobWithDependenciesFactory.fromJobs(existingJobs).orElseThrow();
+            if (jobWithDependencies.areAllDependenciesReferences()) {
+                // Special scenario where all jobs are references, maybe then we fetch the id?
+                return new JobCreationResult(jobWithDependencies, false);
+            }
         }
 
-        jobs = jobRepository.saveAll(jobs);
+        jobRepository.save(newJob);
 
-        return new JobCreationResult(JobWithDependenciesFactory.fromJobs(jobs).orElseThrow(), true);
+        return new JobCreationResult(JobWithDependenciesFactory.from(newJob), true);
     }
 
     /**

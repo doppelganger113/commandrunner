@@ -13,6 +13,8 @@ import java.util.UUID;
 @Service
 public class JobFactory {
 
+    private final static String HASH_SEPARATOR = "_";
+
     private final ShaHash shaHash;
 
     public JobFactory(ShaHash shaHash) {
@@ -48,6 +50,6 @@ public class JobFactory {
     }
 
     public String updateUniqueJobIdForReference(String uniqueJobId) {
-        return uniqueJobId + "-" + UUID.randomUUID();
+        return uniqueJobId + HASH_SEPARATOR + UUID.randomUUID();
     }
 }

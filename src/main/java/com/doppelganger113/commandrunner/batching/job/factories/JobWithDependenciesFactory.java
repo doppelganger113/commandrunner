@@ -98,6 +98,10 @@ public class JobWithDependenciesFactory {
         List<Job> nonNullJobs = jobs.stream()
                 .filter(Objects::nonNull)
                 .toList();
+        if (nonNullJobs.size() == 1) {
+            return Optional.of(from(nonNullJobs.getFirst()));
+        }
+
         Job rootJob = nonNullJobs.stream()
                 .filter(job -> job.getParentJobId() == null)
                 .findFirst()

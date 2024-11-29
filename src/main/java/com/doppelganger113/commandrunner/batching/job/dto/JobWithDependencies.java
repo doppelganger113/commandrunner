@@ -3,10 +3,7 @@ package com.doppelganger113.commandrunner.batching.job.dto;
 import com.doppelganger113.commandrunner.batching.job.JobState;
 
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Objects;
+import java.util.*;
 
 // TODO: see about OpenApi docs on fields
 public record JobWithDependencies(
@@ -69,19 +66,6 @@ public record JobWithDependencies(
         );
     }
 
-    public boolean hasAnyDependencyReferences() {
-        if (referenceJobId != null) {
-            return true;
-        }
-        for (JobWithDependencies child : dependencies) {
-            if (child.hasAnyDependencyReferences()) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
     public boolean areAllDependenciesReferences() {
         if (referenceJobId == null) {
             return false;
@@ -93,5 +77,39 @@ public record JobWithDependencies(
         }
 
         return true;
+    }
+
+    /**
+     * Returns an array of leaf nodes that do not have children with references, if all children
+     */
+    public List<JobWithDependencies> findNonRefLeafDependencies() {
+        if (dependencies.isEmpty()) {
+            if (this.referenceJobId == null) {
+                return List.of(this);
+            }
+
+            return Collections.emptyList();
+        }
+
+        List<JobWithDependencies> result = new ArrayList<>();
+
+        for (JobWithDependencies child : dependencies) {
+            if (child.dependencies.isEmpty()) {
+                if (child.referenceJobId == null) {
+                    result.add(child);
+                }
+            } else {
+                List<JobWithDependencies> childLeafDeps = child.findNonRefLeafDependencies();
+                if(childLeafDeps.isEmpty()) {
+                    if(child.referenceJobId == null) {
+                        result.add(child);
+                    }
+                } else {
+                    result.addAll(child.findNonRefLeafDependencies());
+                }
+            }
+        }
+
+        return result;
     }
 }
